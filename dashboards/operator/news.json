@@ -1,0 +1,7 @@
+{
+  "items": [
+    { "title": "EXAMPLE — replace with a real link you actually want on file", "source": "—", "url": "#", "category": "Social Media", "date": "2026-08-21", "relevantClients": [] },
+    { "title": "EXAMPLE — agency-only, not shown on any client portal", "source": "—", "url": "#", "category": "Business", "date": "2026-08-21", "relevantClients": ["_agency_only"] },
+    { "title": "EXAMPLE — coffee-niche item, only Loop Coffee's portal shows this one", "source": "—", "url": "#", "category": "Industry", "date": "2026-08-21", "relevantClients": ["test-loop-coffee"] }
+  ]
+}

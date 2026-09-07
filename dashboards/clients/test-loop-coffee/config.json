@@ -1,0 +1,383 @@
+{
+  "client": "test-loop-coffee",
+  "displayName": "Loop Coffee Co. (TEST DATA)",
+  "clientSystem": "self-serve",
+  "planWindow": {
+    "start": "2026-08-01",
+    "end": "2026-08-31"
+  },
+  "driveFolders": {
+    "root": "#test-no-real-drive-folder",
+    "footageUploads": "#test-no-real-drive-folder",
+    "finalEdits": "#test-no-real-drive-folder",
+    "brandVoice": "#test-no-real-drive-folder",
+    "hooks": "#test-no-real-drive-folder",
+    "assets": "#test-no-real-drive-folder",
+    "customerData": "#test-no-real-drive-folder",
+    "contentIdeas": "#test-no-real-drive-folder"
+  },
+  "videos": [
+    {
+      "id": "loop-w0-01",
+      "title": "Why we roast in small batches",
+      "platform": [
+        "instagram",
+        "tiktok"
+      ],
+      "hook": "Everyone asks why we don't roast more at once. Here's why.",
+      "filmingDirection": "Talking head in the roastery, small batch visible.",
+      "caption": "Small batches, big flavor difference. Ask us why in the comments.",
+      "dueToFilm": "2026-08-24",
+      "dueToEdit": null,
+      "postDate": null,
+      "status": "concept_pending",
+      "note": null,
+      "assignedEditor": null,
+      "editorBrief": {
+        "storyBeats": null,
+        "mustKeep": null,
+        "captionsStyle": null,
+        "musicVibe": null,
+        "ctaOverlay": null,
+        "platformSpecs": null
+      },
+      "overview": "A quick explainer on why the roast profile changed this month \u2014 reassurance content for regulars who noticed.",
+      "body": "Open on the roaster. \"You might've noticed your bag tastes a little different this month.\" Explain the single change (roast curve tweak). \"Same beans, same farm \u2014 just dialed in better.\" Close on a cup pour."
+    },
+    {
+      "id": "loop-w1-01",
+      "title": "Why our beans taste different this month",
+      "platform": [
+        "instagram",
+        "tiktok"
+      ],
+      "hook": "We changed one thing about our roast \u2014 here's why.",
+      "filmingDirection": "Handheld, in the roastery. Show the roaster running.",
+      "caption": "One small change, a totally different cup. Come taste it.",
+      "dueToFilm": "2026-08-10",
+      "dueToEdit": null,
+      "postDate": null,
+      "status": "to_film",
+      "note": null,
+      "assignedEditor": null,
+      "editorBrief": {
+        "storyBeats": null,
+        "mustKeep": null,
+        "captionsStyle": null,
+        "musicVibe": null,
+        "ctaOverlay": null,
+        "platformSpecs": null
+      }
+    },
+    {
+      "id": "loop-w1-02",
+      "title": "Morning routine of a roaster",
+      "platform": [
+        "instagram"
+      ],
+      "hook": "5am. The roaster's already awake.",
+      "filmingDirection": "POV style, opening the shop.",
+      "caption": "This is what it takes for your 8am cup to exist.",
+      "dueToFilm": "2026-08-12",
+      "dueToEdit": null,
+      "postDate": null,
+      "status": "to_film",
+      "note": null,
+      "assignedEditor": null,
+      "editorBrief": {
+        "storyBeats": null,
+        "mustKeep": null,
+        "captionsStyle": null,
+        "musicVibe": null,
+        "ctaOverlay": null,
+        "platformSpecs": null
+      }
+    },
+    {
+      "id": "loop-w2-01",
+      "title": "Taste test: light vs dark roast",
+      "platform": [
+        "tiktok"
+      ],
+      "hook": "Most people are wrong about which one's stronger.",
+      "filmingDirection": "Side by side cups, quick cuts.",
+      "caption": "Light or dark \u2014 which one do you actually reach for?",
+      "dueToFilm": "2026-08-14",
+      "dueToEdit": null,
+      "postDate": null,
+      "status": "filmed",
+      "note": null,
+      "assignedEditor": null,
+      "editorBrief": {
+        "storyBeats": null,
+        "mustKeep": null,
+        "captionsStyle": null,
+        "musicVibe": null,
+        "ctaOverlay": null,
+        "platformSpecs": null
+      }
+    },
+    {
+      "id": "loop-w2-02",
+      "title": "The bag redesign story",
+      "platform": [
+        "instagram",
+        "tiktok"
+      ],
+      "hook": "We almost didn't change the bag. Here's why we did.",
+      "filmingDirection": "Talking head + product shots.",
+      "caption": "New look, same coffee. Here's the story behind the redesign.",
+      "dueToFilm": "2026-08-15",
+      "dueToEdit": null,
+      "postDate": null,
+      "status": "ready_to_edit",
+      "note": null,
+      "assignedEditor": null,
+      "editorBrief": {
+        "storyBeats": null,
+        "mustKeep": null,
+        "captionsStyle": null,
+        "musicVibe": null,
+        "ctaOverlay": null,
+        "platformSpecs": null
+      }
+    },
+    {
+      "id": "loop-w2-03",
+      "title": "Behind the counter on a Saturday rush",
+      "platform": [
+        "instagram"
+      ],
+      "hook": "This is what 40 orders in 20 minutes looks like.",
+      "filmingDirection": "Fast handheld, real rush if possible.",
+      "caption": "Saturday mornings hit different behind the bar.",
+      "dueToFilm": "2026-08-16",
+      "dueToEdit": "2026-08-25",
+      "postDate": "2026-09-01",
+      "status": "with_editor",
+      "note": null,
+      "assignedEditor": "Jordan",
+      "editorBrief": {
+        "storyBeats": "Open on the rush already in motion, no intro \u2014 cut to the calm after close for contrast.",
+        "mustKeep": "The line out the door shot at 0:04.",
+        "captionsStyle": "Burned-in captions, bold, bottom third.",
+        "musicVibe": "Upbeat but not chaotic \u2014 energetic coffee-shop indie, not EDM.",
+        "ctaOverlay": "Come see the rush yourself \u2014 Saturdays, 8-10am.",
+        "platformSpecs": "9:16, under 30s, safe zone clear of bottom nav for Reels/TikTok."
+      },
+      "overview": "A fast-paced look at what a Saturday rush actually looks like behind the counter \u2014 for the customers who only ever see the front.",
+      "body": "No dialogue \u2014 pure motion. Quick cuts: espresso pulls, oat milk steaming, handoff, next order. End on the empty bar after close, one exhale."
+    },
+    {
+      "id": "loop-w2-04",
+      "title": "Farmer relationship story",
+      "platform": [
+        "instagram",
+        "tiktok"
+      ],
+      "hook": "We've bought from the same farm for 6 years.",
+      "filmingDirection": "Voiceover over sourcing photos, talking head intro.",
+      "caption": "Six years, one farm, real relationships. This is where it starts.",
+      "dueToFilm": "2026-08-17",
+      "dueToEdit": "2026-08-26",
+      "postDate": "2026-09-02",
+      "status": "with_editor",
+      "note": "Trim the intro -- too slow before the hook lands.",
+      "assignedEditor": "Jordan",
+      "editorBrief": {
+        "storyBeats": "Talking head intro (10s) -> photo montage w/ voiceover -> back to talking head for CTA.",
+        "mustKeep": "The line \"they treat this farm like family\" \u2014 verbatim, don't trim.",
+        "captionsStyle": "Burned-in captions, bold, bottom third.",
+        "musicVibe": "Warm, acoustic, understated \u2014 this one's a story, not a hook reel.",
+        "ctaOverlay": "Read the full story \u2014 link in bio.",
+        "platformSpecs": "9:16, under 60s."
+      }
+    },
+    {
+      "id": "loop-w1-03",
+      "title": "How to actually store your beans",
+      "platform": [
+        "tiktok"
+      ],
+      "hook": "You're probably storing your coffee wrong.",
+      "filmingDirection": "Quick tips, on camera.",
+      "caption": "Save this before your next bag goes stale.",
+      "dueToFilm": "2026-08-08",
+      "dueToEdit": "2026-08-15",
+      "postDate": "2026-08-22",
+      "status": "client_review",
+      "note": null,
+      "assignedEditor": "Sam",
+      "editorBrief": {
+        "storyBeats": "3 quick tips, on-screen numbers 1-2-3.",
+        "mustKeep": "The airtight-container tip has to be tip #1.",
+        "captionsStyle": "Numbered on-screen text, punchy.",
+        "musicVibe": "Fast, playful, tip-reel energy.",
+        "ctaOverlay": "Save this for later.",
+        "platformSpecs": "9:16, under 20s."
+      }
+    },
+    {
+      "id": "loop-w1-05",
+      "title": "Latte art fails compilation",
+      "platform": [
+        "instagram",
+        "tiktok"
+      ],
+      "hook": "Two years of latte art. It did not start well.",
+      "filmingDirection": "Compilation of practice attempts, most recent last.",
+      "caption": "Nobody starts good. Here's the proof.",
+      "dueToFilm": "2026-08-06",
+      "dueToEdit": "2026-08-13",
+      "postDate": "2026-08-20",
+      "status": "ready_to_post",
+      "note": null,
+      "assignedEditor": "Sam",
+      "editorBrief": {
+        "storyBeats": "Worst attempts first, building to the best \u2014 comedic pacing.",
+        "mustKeep": "The one where it turns into a blob at 0:08 \u2014 funniest clip.",
+        "captionsStyle": "Minimal, let the visuals carry it.",
+        "musicVibe": "Comedic timing cues, upbeat.",
+        "ctaOverlay": "Follow for the next two years of practice.",
+        "platformSpecs": "9:16, under 30s."
+      }
+    },
+    {
+      "id": "loop-w1-04",
+      "title": "First-time customer reactions",
+      "platform": [
+        "instagram"
+      ],
+      "hook": "We handed a stranger our new blend, unlabeled.",
+      "filmingDirection": "Street interview style.",
+      "caption": "Blind taste test, zero hints. Their reactions were priceless.",
+      "dueToFilm": "2026-08-05",
+      "dueToEdit": "2026-08-07",
+      "postDate": "2026-08-14",
+      "status": "posted",
+      "note": null,
+      "assignedEditor": "Sam",
+      "editorBrief": {
+        "storyBeats": "Reaction shots first, reveal of the blend name last.",
+        "mustKeep": null,
+        "captionsStyle": "Burned-in captions.",
+        "musicVibe": "Light, curious build.",
+        "ctaOverlay": "Try it yourself \u2014 in store now.",
+        "platformSpecs": "9:16, under 45s."
+      }
+    }
+  ],
+  "pendingConcepts": [
+    {
+      "id": "loop-cyc2-01",
+      "title": "What 'single origin' actually means",
+      "cycle": "clients/test-loop-coffee/concepts/cycle-2.md",
+      "hook": "Everyone says single origin. Almost nobody explains it.",
+      "identity": "For the customer who nods along at menu terms without really knowing what they mean.",
+      "drive": "Comment 'ORIGIN' for the guide.",
+      "status": "pending_approval"
+    },
+    {
+      "id": "loop-cyc2-02",
+      "title": "Why we don't do flavored syrups",
+      "cycle": "clients/test-loop-coffee/concepts/cycle-2.md",
+      "hook": "We got asked for vanilla syrup again today. Here's our answer.",
+      "identity": "For the purist customer who already agrees but wants to hear it said out loud.",
+      "drive": "Visit the shop and ask us why.",
+      "status": "pending_approval"
+    }
+  ],
+  "competitors": [
+    {
+      "name": "Roast & Co",
+      "tag": "direct",
+      "platforms": [
+        "instagram",
+        "tiktok"
+      ],
+      "followers": 41000,
+      "engagementRate": 4.2,
+      "postsPerWeek": 5.1,
+      "growth30d": 2.1
+    },
+    {
+      "name": "Third Wave Supply",
+      "tag": "indirect",
+      "platforms": [
+        "instagram"
+      ],
+      "followers": 118000,
+      "engagementRate": 2.8,
+      "postsPerWeek": 3.4,
+      "growth30d": 0.6
+    },
+    {
+      "name": "Blue Bottle",
+      "tag": "aspirational",
+      "platforms": [
+        "instagram",
+        "tiktok",
+        "facebook"
+      ],
+      "followers": 890000,
+      "engagementRate": 1.9,
+      "postsPerWeek": 6.2,
+      "growth30d": 1.1
+    },
+    {
+      "name": "Corner Grind",
+      "tag": "direct",
+      "platforms": [
+        "instagram"
+      ],
+      "followers": 8200,
+      "engagementRate": 6.7,
+      "postsPerWeek": 2.3,
+      "growth30d": 5.4
+    }
+  ],
+  "analytics": [
+    {
+      "date": "2026-08-01",
+      "platform": "instagram",
+      "impressions": 18200,
+      "followers": 12400,
+      "engagementRate": 3.1
+    },
+    {
+      "date": "2026-08-08",
+      "platform": "instagram",
+      "impressions": 21100,
+      "followers": 12650,
+      "engagementRate": 3.4
+    },
+    {
+      "date": "2026-08-15",
+      "platform": "instagram",
+      "impressions": 26400,
+      "followers": 13020,
+      "engagementRate": 3.6
+    },
+    {
+      "date": "2026-08-01",
+      "platform": "tiktok",
+      "impressions": 9800,
+      "followers": 5100,
+      "engagementRate": 5.2
+    },
+    {
+      "date": "2026-08-08",
+      "platform": "tiktok",
+      "impressions": 15200,
+      "followers": 5600,
+      "engagementRate": 5.9
+    },
+    {
+      "date": "2026-08-15",
+      "platform": "tiktok",
+      "impressions": 22300,
+      "followers": 6400,
+      "engagementRate": 6.4
+    }
+  ]
+}

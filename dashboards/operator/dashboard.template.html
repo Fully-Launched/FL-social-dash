@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fully Social OS — Operator</title>
+<style>/*__SHELL_CSS__*/</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="brand"><span class="dot"></span> Fully Social OS</div>
+  <div class="nav-item active" data-view="home"><span class="ic">🏠</span> Dashboard</div>
+  <div class="nav-item" data-view="calendar"><span class="ic">📅</span> Content Calendar</div>
+  <div class="nav-item" data-view="schedule"><span class="ic">🗓️</span> Schedule</div>
+  <div class="nav-item" data-view="review"><span class="ic">🛎️</span> Content Review</div>
+  <div class="nav-item" data-view="post"><span class="ic">✅</span> Ready to Post</div>
+  <div class="nav-item" data-view="competitors"><span class="ic">⚔️</span> Competitor Tracker</div>
+  <div class="nav-item" data-view="analytics"><span class="ic">📈</span> Analytics</div>
+  <div class="nav-item" data-view="news"><span class="ic">📰</span> News Consolidator</div>
+  <div class="nav-section-label">Sync</div>
+  <div class="nav-item" data-view="sync"><span class="ic">🔄</span> Apply status report</div>
+</nav>
+
+<main class="main">
+
+  <div class="chip-row" id="globalClientFilter" style="margin-bottom:10px"></div>
+  <div id="globalClientBanner"></div>
+
+  <section class="view active" id="view-home">
+    <div class="page-head"><h1>Dashboard</h1><p id="asOf"></p></div>
+    <div class="stat-grid" id="homeStats"></div>
+    <div class="card">
+      <h2>Needs content ideas <span style="font-weight:400;color:var(--sub);font-size:0.78rem">— running low on scheduled/pending concepts</span></h2>
+      <div id="needsIdeasList"></div>
+    </div>
+    <div class="card">
+      <h2>Clients</h2>
+      <div id="clientsList"></div>
+    </div>
+  </section>
+
+  <section class="view" id="view-calendar">
+    <div class="page-head"><h1>Content Calendar</h1><p>Every client's scheduled videos.</p></div>
+    <div class="card"><div class="cal-grid" id="calGrid"></div></div>
+  </section>
+
+  <section class="view" id="view-schedule">
+    <div class="page-head"><h1>Schedule</h1><p>Every date is hand-set here — nothing auto-computes or overwrites what you type. The 7-day film-to-post gap is only ever a starting suggestion when a video is first scheduled.</p></div>
+    <div class="card">
+      <table>
+        <thead><tr><th>Video</th><th>Client</th><th>Status</th><th>Due to film</th><th>Due to edit</th><th>Post date</th></tr></thead>
+        <tbody id="scheduleRows"></tbody>
+      </table>
+      <div class="empty" id="scheduleEmpty" style="display:none">No videos scheduled yet.</div>
+    </div>
+    <div class="card">
+      <h2>Copy schedule changes</h2>
+      <p style="color:var(--sub);font-size:0.85rem;margin:0 0 12px">Date edits here update this view immediately, but this is still a browser-only view, same as everything else in this dashboard — nothing writes back to <code>config.json</code> on its own. Copy what changed and hand it to whoever's running <code>calendar-planner</code> (Claude Code) to make it permanent.</p>
+      <button class="primary" id="scheduleReportBtn">Generate changes report</button>
+      <div class="card" id="scheduleReportBox" style="display:none;margin-top:12px">
+        <textarea id="scheduleReportText" rows="6" readonly></textarea>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="view-review">
+    <div class="page-head"><h1>Content Review</h1><p>Three gates: agency concept approval and edit approval are yours — click straight from here. The concept and final-review gates belong to the client; shown here for visibility, not action.</p></div>
+    <div class="grid-2">
+      <div class="card"><h2>Concepts awaiting your approval</h2><div id="conceptsList"></div></div>
+      <div class="card"><h2>Edits awaiting your approval</h2><div id="editsList"></div></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h2>Waiting on the client</h2>
+      <div id="clientWaitingList"></div>
+    </div>
+  </section>
+
+  <section class="view" id="view-post">
+    <div class="page-head"><h1>Ready to Post</h1><p>Approved, waiting for whoever holds the login.</p></div>
+    <div class="card"><div id="postList"></div></div>
+  </section>
+
+  <section class="view" id="view-competitors">
+    <div class="page-head"><h1>Competitor Tracker</h1><p>Manually maintained per client — see Sources note below.</p></div>
+    <div class="card">
+      <table>
+        <thead><tr><th>Competitor</th><th>Platforms</th><th>Followers</th><th>Eng. rate</th><th>Posts/wk</th><th>30d growth</th></tr></thead>
+        <tbody id="compRows"></tbody>
+      </table>
+      <div class="empty" id="compEmpty" style="display:none">No competitors tracked for this client yet.</div>
+    </div>
+  </section>
+
+  <section class="view" id="view-analytics">
+    <div class="page-head"><h1>Analytics</h1><p>Manually entered per sync — not a live feed.</p></div>
+    <div class="stat-grid" id="anStats"></div>
+    <div class="card">
+      <h2>Followers over time</h2>
+      <div class="chart-wrap" id="anChart"></div>
+      <div class="chart-legend" id="anLegend"></div>
+    </div>
+  </section>
+
+  <section class="view" id="view-news">
+    <div class="page-head"><h1>News Consolidator</h1><p>Curated by hand — links worth having on file, not an auto-pulled feed.</p></div>
+    <div class="chip-row" id="newsChips"></div>
+    <div class="card"><div id="newsList"></div></div>
+  </section>
+
+  <section class="view" id="view-sync">
+    <div class="page-head"><h1>Apply status report</h1><p>Paste a report copied from a client portal or the editor dashboard.</p></div>
+    <div class="card">
+      <textarea id="pasteInput" rows="7" placeholder="Paste the report here..."></textarea>
+      <div style="margin-top:10px"><button class="primary" id="pasteBtn">Apply report</button></div>
+      <div id="pasteResult" style="margin-top:12px; font-size:0.85rem;"></div>
+    </div>
+  </section>
+
+</main>
+
+<script>/*__SHELL_JS__*/</script>
+<script>
+const CLIENTS = /*__CLIENTS_JSON__*/[];
+const NEWS = /*__NEWS_JSON__*/[];
+const STORE_KEY = "fso_operator_overrides";
+
+function loadOverrides() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); } catch (e) { return {}; }
+}
+function saveOverrides(o) { try { localStorage.setItem(STORE_KEY, JSON.stringify(o)); } catch (e) {} }
+
+// One filter, always visible at the top of the whole dashboard, not just
+// one page. "all" is every client at once (the aggregate view this
+// dashboard always showed); picking one client filters every page to just
+// them and surfaces the button that opens their own live portal, since
+// that's the only place a video can actually be added or edited — see the
+// "Why this can't be driven from the operator dashboard instead" note in
+// dashboards/template/README.md.
+let globalClientFilter = "all";
+function filteredClients() {
+  return globalClientFilter === "all" ? CLIENTS : CLIENTS.filter(c => c.client === globalClientFilter);
+}
+function renderGlobalClientFilter() {
+  const chips = [{ client: "all", displayName: "All clients" }, ...CLIENTS];
+  document.getElementById("globalClientFilter").innerHTML = chips.map(c =>
+    `<div class="chip ${globalClientFilter === c.client ? "active" : ""}" data-c="${escapeHtml(c.client)}">${escapeHtml(c.displayName)}</div>`
+  ).join("");
+  document.querySelectorAll("#globalClientFilter .chip").forEach(el => el.onclick = () => { globalClientFilter = el.dataset.c; renderAll(); });
+
+  const banner = document.getElementById("globalClientBanner");
+  if (globalClientFilter === "all") { banner.innerHTML = ""; return; }
+  const client = CLIENTS.find(c => c.client === globalClientFilter);
+  if (!client) { banner.innerHTML = ""; return; }
+  if (!client.portalUrl) {
+    banner.innerHTML = `<div class="card" style="margin-bottom:18px"><b>${escapeHtml(client.displayName)}</b><div class="meta">No live portal link on file for this client yet — add <code>portalUrl</code> to their config.json to unlock adding/editing videos here.</div></div>`;
+    return;
+  }
+  const editUrl = quickLink(client, {});
+  banner.innerHTML = `
+    <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px">
+      <div><b>${escapeHtml(client.displayName)}</b><div class="meta">Every page below is filtered to just this client.</div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button id="newIdeaBtn">+ New video idea</button>
+        <a class="btn primary" href="${editUrl}" target="_blank" rel="noopener">🔧 Add / edit videos for ${escapeHtml(client.displayName)}</a>
+      </div>
+    </div>
+    <div class="card" id="newIdeaPanel" style="display:none;margin-bottom:18px"></div>
+  `;
+  document.getElementById("newIdeaBtn").onclick = () => openNewIdeaPanel(client);
+}
+
+// A quick "video idea" composer, right where the client is already
+// selected. Submitting doesn't save anything here — it opens that
+// client's own live portal with the new video already filled in and
+// publishes the moment that tab loads. See "quick actions" in
+// client-portal.template.html and dashboards/template/README.md.
+const NEW_IDEA_FIELDS = [
+  { key: "title", label: "Title", type: "text" },
+  { key: "platform", label: "Platforms (comma-separated)", type: "list" },
+  { key: "hook", label: "Hook", type: "textarea", rows: 2 },
+  { key: "overview", label: "Overview", type: "textarea", rows: 2 },
+  { key: "filmingDirection", label: "Filming direction", type: "textarea", rows: 3 },
+  { key: "caption", label: "Caption", type: "textarea", rows: 2 },
+];
+function newIdeaFieldHtml(f) {
+  const label = `<label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">${escapeHtml(f.label)}</label>`;
+  if (f.type === "textarea") return label + `<textarea data-f="${f.key}" data-type="text" rows="${f.rows||2}" style="width:100%;margin-bottom:10px"></textarea>`;
+  return label + `<input type="text" data-f="${f.key}" data-type="${f.type}" style="width:100%;margin-bottom:10px">`;
+}
+function openNewIdeaPanel(client) {
+  const panel = document.getElementById("newIdeaPanel");
+  const showing = panel.style.display !== "none";
+  if (showing) { panel.style.display = "none"; return; }
+  panel.innerHTML = `<h2 style="font-size:1rem;margin:0 0 14px">New video idea for ${escapeHtml(client.displayName)}</h2>` +
+    NEW_IDEA_FIELDS.map(newIdeaFieldHtml).join("") +
+    `<div style="display:flex;gap:8px"><button class="primary" data-send>Create & send live</button><button data-cancel>Cancel</button></div>`;
+  panel.style.display = "block";
+  panel.querySelector("[data-cancel]").onclick = () => { panel.style.display = "none"; };
+  panel.querySelector("[data-send]").onclick = () => {
+    const fields = { status: "concept_pending" };
+    panel.querySelectorAll("[data-f]").forEach(el => {
+      fields[el.dataset.f] = el.dataset.type === "list" ? el.value.split(",").map(s=>s.trim()).filter(Boolean) : el.value;
+    });
+    if (!fields.title) { alert("Give it a title first."); return; }
+    const payload = JSON.stringify(fields);
+    const url = quickLink(client, { quickAdd: payload });
+    window.open(url, "_blank");
+    panel.style.display = "none";
+  };
+}
+
+function effectiveVideo(client, video, overrides) {
+  const o = overrides[client.client + ":" + video.id];
+  if (!o) return video;
+  const merged = Object.assign({}, video);
+  if (o.status != null) merged.status = o.status;
+  if (o.note !== undefined) merged.note = o.note;
+  ["dueToFilm", "dueToEdit", "postDate"].forEach(f => { if (o[f] !== undefined) merged[f] = o[f]; });
+  return merged;
+}
+
+function allVideos() {
+  const overrides = loadOverrides();
+  const out = [];
+  filteredClients().forEach(client => (client.videos || []).forEach(v0 => out.push({ client, video: effectiveVideo(client, v0, overrides) })));
+  return out;
+}
+
+// Local-only fallback — used only for a client with no portalUrl on file
+// yet. Saves to this browser's own view; someone still has to relay it
+// (paste-in status report) for it to reach anyone else.
+function operatorSetStatus(clientSlug, videoId, status, note) {
+  const overrides = loadOverrides();
+  const key = clientSlug + ":" + videoId;
+  overrides[key] = Object.assign({}, overrides[key], { status, note: note !== undefined ? note : (overrides[key] ? overrides[key].note : null) });
+  saveOverrides(overrides);
+  renderAll();
+}
+function operatorRequestRevisions(clientSlug, videoId) {
+  const note = prompt("What needs to change before this goes back to the client?");
+  if (note === null) return;
+  operatorSetStatus(clientSlug, videoId, "with_editor", note);
+}
+
+// Quick actions — the actual live path. This dashboard can't publish into
+// a different client's own Artifact (see dashboards/template/README.md),
+// so instead of acting here, these open that client's own portal in
+// operator mode with the action already spelled out in the URL; the
+// portal runs it and publishes the instant it loads. Falls back to the
+// local-only functions above only if that client has no portalUrl yet.
+// buildHashState (shell.js) is required here, not a plain query string or
+// "#key=value" hash — both get silently dropped by claude.ai's Artifact
+// wrapper before the embedded document ever sees them (confirmed by
+// testing); only a bare base64url token in the hash survives.
+function quickLink(client, params) {
+  if (!client || !client.portalUrl) return null;
+  const base = client.portalUrl.split("#")[0].split("?")[0];
+  return base + buildHashState(Object.assign({ operator: "1" }, params));
+}
+function goLiveApprove(clientSlug, videoId) {
+  const client = CLIENTS.find(c => c.client === clientSlug);
+  const url = quickLink(client, { quickApprove: videoId });
+  if (url) window.open(url, "_blank");
+  else operatorSetStatus(clientSlug, videoId, "client_review");
+}
+function goLiveRevise(clientSlug, videoId) {
+  const note = prompt("What needs to change before this goes back to the client?");
+  if (note === null) return;
+  const client = CLIENTS.find(c => c.client === clientSlug);
+  const url = quickLink(client, { quickRevise: videoId, note: note });
+  if (url) window.open(url, "_blank");
+  else operatorSetStatus(clientSlug, videoId, "with_editor", note);
+}
+function goLivePost(clientSlug, videoId) {
+  const client = CLIENTS.find(c => c.client === clientSlug);
+  const url = quickLink(client, { quickPost: videoId });
+  if (url) window.open(url, "_blank");
+  else operatorSetStatus(clientSlug, videoId, "posted");
+}
+
+// Hand-editable dates — dueToFilm, dueToEdit, postDate. Never computed or
+// overwritten automatically; the 7-day gap calendar-planner uses is only a
+// starting suggestion when a video is first scheduled.
+function operatorSetDate(clientSlug, videoId, field, value) {
+  const overrides = loadOverrides();
+  const key = clientSlug + ":" + videoId;
+  overrides[key] = Object.assign({}, overrides[key], { [field]: value || null });
+  saveOverrides(overrides);
+  renderSchedule(); renderHome(); renderCalendar();
+}
+
+function rowHtml(client, video) {
+  const meta = [client.displayName, (video.platform||[]).join(" · "),
+    video.dueToFilm ? "film by " + video.dueToFilm : null,
+    video.postDate ? "post " + video.postDate : null]
+    .filter(Boolean).join(" · ");
+  return `<div class="row">
+    <div class="left"><b class="video-card" style="display:inline-block" onclick="openOperatorVideoModal('${escapeHtml(client.client)}','${escapeHtml(video.id)}')">${escapeHtml(video.title || video.id)}</b><div class="meta">${escapeHtml(meta)}${video.note ? " · " + escapeHtml(video.note) : ""}</div></div>
+    ${statusBadge(video.status, STATUS_LABEL)}
+  </div>`;
+}
+
+// Same shared modal as the client/editor dashboards. The operator only
+// gets action buttons for the gate they hold (edit approval); everything
+// else is shown for visibility, since acting on it isn't the operator's to do.
+function openOperatorVideoModal(clientSlug, videoId) {
+  const client = CLIENTS.find(c => c.client === clientSlug);
+  if (!client) return;
+  const overrides = loadOverrides();
+  const video0 = (client.videos || []).find(v => v.id === videoId);
+  if (!video0) return;
+  const video = effectiveVideo(client, video0, overrides);
+  let actionsHtml = "";
+  if (video.status === "in_review") {
+    actionsHtml = `<button class="primary" onclick="goLiveApprove('${clientSlug}','${videoId}');closeVideoModal()">Approve</button>
+      <button class="reject" onclick="goLiveRevise('${clientSlug}','${videoId}');closeVideoModal()">Request revisions</button>`;
+  }
+  openVideoModal(client, video, { actionsHtml });
+}
+
+// ---------- Home ----------
+function renderHome() {
+  document.getElementById("asOf").textContent = "As of " + new Date().toLocaleString();
+  const vids = allVideos();
+  const overdue = vids.filter(x => (x.video.dueToFilm && x.video.dueToFilm < todayISO() && ["to_film","filmed"].includes(x.video.status))
+    || (x.video.dueToEdit && x.video.dueToEdit < todayISO() && x.video.status === "with_editor")
+    || (x.video.postDate && x.video.postDate < todayISO() && x.video.status !== "posted"));
+  const inReview = vids.filter(x => x.video.status === "in_review");
+  const withEditor = vids.filter(x => x.video.status === "with_editor");
+  const waitingOnClient = vids.filter(x => ["concept_pending","client_review"].includes(x.video.status));
+  const pendingConcepts = filteredClients().reduce((n, c) => n + (c.pendingConcepts || []).filter(p => p.status === "pending_approval").length, 0);
+
+  const stats = [
+    { label: globalClientFilter === "all" ? "Active clients" : "Client", value: globalClientFilter === "all" ? filteredClients().length : filteredClients()[0].displayName },
+    { label: "Overdue", value: overdue.length, tone: overdue.length ? "down" : "up" },
+    { label: "Awaiting my approval", value: inReview.length + pendingConcepts },
+    { label: "Waiting on client", value: waitingOnClient.length },
+    { label: "With editor", value: withEditor.length },
+  ];
+  document.getElementById("homeStats").innerHTML = stats.map(s => `
+    <div class="stat-card"><div class="label">${escapeHtml(s.label)}</div><div class="value">${s.value}</div></div>
+  `).join("");
+
+  document.getElementById("clientsList").innerHTML = filteredClients().map(c => {
+    const f = c.driveFolders || {};
+    const links = ["root","footageUploads","finalEdits","brandVoice","hooks","assets"]
+      .filter(k => f[k]).map(k => `<a class="btn" style="margin-right:6px;font-size:0.75rem;padding:4px 9px" href="${f[k]}" target="_blank" rel="noopener">${k}</a>`).join("");
+    // "Live edit" jumps into that client's own portal link with operator
+    // mode on. This dashboard aggregates every client's config.json (a
+    // git file) and can't publish into a different, separate artifact —
+    // so edits meant to reach that client live have to happen inside
+    // their own portal, not from here. See dashboards/template/README.md.
+    const liveEdit = c.portalUrl
+      ? `<a class="btn primary" style="margin-right:6px;font-size:0.75rem;padding:4px 9px" href="${quickLink(c, {})}" target="_blank" rel="noopener">🔧 Live edit</a>`
+      : "";
+    return `<div class="row"><div class="left"><b>${escapeHtml(c.displayName)}</b>
+      <div class="meta">${(c.videos||[]).length} video(s) · plan ${escapeHtml((c.planWindow||{}).start||"?")} – ${escapeHtml((c.planWindow||{}).end||"?")}</div></div>
+      <div>${liveEdit}${links}</div></div>`;
+  }).join("") || '<div class="empty">No clients configured.</div>';
+
+  // Heuristic, not a stored fact — see dashboards/template/README.md.
+  const needsIdeas = filteredClients().filter(c => {
+    const pendingApproved = (c.pendingConcepts || []).filter(p => p.status === "pending_approval").length;
+    const upcoming = (c.videos || []).filter(v => ["concept_pending","to_film"].includes(v.status)).length;
+    return pendingApproved === 0 && upcoming < 3;
+  });
+  document.getElementById("needsIdeasList").innerHTML = needsIdeas.length
+    ? needsIdeas.map(c => `<div class="row"><div class="left"><b>${escapeHtml(c.displayName)}</b>
+        <div class="meta">${(c.videos||[]).filter(v=>["concept_pending","to_film"].includes(v.status)).length} video(s) queued, 0 concepts pending approval</div></div></div>`).join("")
+    : '<div class="empty">Everyone has enough queued up.</div>';
+}
+
+// ---------- Calendar ----------
+function renderCalendar() {
+  const vids = allVideos();
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startDow = first.getDay();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+
+  const byDay = {};
+  vids.forEach(x => {
+    const d = x.video.dueToFilm || x.video.postDate;
+    if (!d) return;
+    (byDay[d] = byDay[d] || []).push(x);
+  });
+
+  let html = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => `<div class="cal-dow">${d}</div>`).join("");
+  for (let i = 0; i < startDow; i++) html += `<div></div>`;
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = new Date(now.getFullYear(), now.getMonth(), day).toISOString().slice(0,10);
+    const items = byDay[dateStr] || [];
+    const isToday = dateStr === todayISO();
+    html += `<div class="cal-cell ${isToday ? "today" : ""}"><div class="daynum">${day}</div>` +
+      items.slice(0,3).map(x => `<div class="cal-chip video-card" style="background:color-mix(in srgb, var(--status-${x.video.status}) 20%, transparent); color:var(--status-${x.video.status})" title="${escapeHtml(x.video.title||x.video.id)}" onclick="openOperatorVideoModal('${escapeHtml(x.client.client)}','${escapeHtml(x.video.id)}')">${escapeHtml(x.client.displayName)}: ${escapeHtml(x.video.title||x.video.id)}</div>`).join("") +
+      (items.length > 3 ? `<div class="cal-chip" style="color:var(--sub)">+${items.length-3} more</div>` : "") +
+      `</div>`;
+  }
+  document.getElementById("calGrid").innerHTML = html;
+}
+
+// ---------- Schedule (hand-editable dates) ----------
+function renderSchedule() {
+  const vids = allVideos();
+  const tbody = document.getElementById("scheduleRows");
+  document.getElementById("scheduleEmpty").style.display = vids.length ? "none" : "block";
+  tbody.innerHTML = vids.map(({ client, video }) => `
+    <tr>
+      <td><b>${escapeHtml(video.title || video.id)}</b></td>
+      <td>${escapeHtml(client.displayName)}</td>
+      <td>${statusBadge(video.status, STATUS_LABEL)}</td>
+      <td>${dateInput(client.client, video.id, "dueToFilm", video.dueToFilm)}</td>
+      <td>${dateInput(client.client, video.id, "dueToEdit", video.dueToEdit)}</td>
+      <td>${dateInput(client.client, video.id, "postDate", video.postDate)}</td>
+    </tr>
+  `).join("");
+}
+function dateInput(clientSlug, videoId, field, value) {
+  return `<input type="date" value="${value || ""}" style="font-size:0.82rem;padding:5px 6px" onchange="operatorSetDate('${clientSlug}','${videoId}','${field}', this.value)">`;
+}
+
+document.getElementById("scheduleReportBtn").onclick = () => {
+  const overrides = loadOverrides();
+  const lines = [];
+  CLIENTS.forEach(client => (client.videos || []).forEach(v0 => {
+    const o = overrides[client.client + ":" + v0.id];
+    if (!o) return;
+    ["dueToFilm", "dueToEdit", "postDate"].forEach(f => {
+      if (o[f] !== undefined && o[f] !== v0[f]) lines.push(`${client.client} | ${v0.id} | ${f} | ${o[f] || "(cleared)"}`);
+    });
+  }));
+  const now = new Date().toISOString().replace("T", " ").slice(0, 16);
+  const report = ["FULLY SOCIAL OS SCHEDULE CHANGES", "Generated: " + now, "---",
+    lines.length ? lines.join("\n") : "(no date changes yet)"].join("\n");
+  const box = document.getElementById("scheduleReportBox"), ta = document.getElementById("scheduleReportText");
+  ta.value = report; box.style.display = "block"; ta.focus(); ta.select();
+};
+
+// ---------- Content Review ----------
+function renderReview() {
+  const concepts = [];
+  filteredClients().forEach(c => (c.pendingConcepts || []).filter(p => p.status === "pending_approval").forEach(p => concepts.push({ client: c, concept: p })));
+  document.getElementById("conceptsList").innerHTML = concepts.length ? concepts.map(x => `
+    <div class="row"><div class="left"><b>${escapeHtml(x.concept.title)}</b>
+    <div class="meta">${escapeHtml(x.client.displayName)} · Hook: ${escapeHtml(x.concept.hook||"—")}</div></div>
+    <span class="badge" style="background:rgba(245,158,11,0.15);color:#fbbf24">Pending</span></div>
+  `).join("") : '<div class="empty">Nothing waiting.</div>';
+
+  const edits = allVideos().filter(x => x.video.status === "in_review");
+  document.getElementById("editsList").innerHTML = edits.length ? edits.map(x => `
+    <div class="row"><div class="left"><b>${escapeHtml(x.video.title||x.video.id)}</b>
+    <div class="meta">${escapeHtml(x.client.displayName)} · ${(x.video.platform||[]).join(" · ")}</div></div>
+    <div style="display:flex;gap:6px">
+      <button style="font-size:0.78rem;padding:5px 10px" onclick="goLiveApprove('${x.client.client}','${x.video.id}')">Approve</button>
+      <button class="reject" style="font-size:0.78rem;padding:5px 10px" onclick="goLiveRevise('${x.client.client}','${x.video.id}')">Request revisions</button>
+    </div></div>
+  `).join("") : '<div class="empty">Nothing waiting.</div>';
+
+  const waiting = allVideos().filter(x => ["concept_pending","client_review"].includes(x.video.status));
+  document.getElementById("clientWaitingList").innerHTML = waiting.length ? waiting.map(x => rowHtml(x.client, x.video)).join("") : '<div class="empty">Nothing waiting on a client right now.</div>';
+}
+
+// ---------- Ready to post ----------
+function renderPost() {
+  const ready = allVideos().filter(x => x.video.status === "ready_to_post");
+  document.getElementById("postList").innerHTML = ready.length ? ready.map(x => `
+    <div class="row"><div class="left"><b>${escapeHtml(x.video.title||x.video.id)}</b>
+    <div class="meta">${escapeHtml(x.client.displayName)} · ${(x.video.platform||[]).join(" · ")}${x.video.postDate ? " · target " + escapeHtml(x.video.postDate) : ""}${x.video.caption ? " · “" + escapeHtml(x.video.caption) + "”" : ""}</div></div>
+    <button class="primary" style="font-size:0.78rem;padding:5px 10px" onclick="goLivePost('${escapeHtml(x.client.client)}','${escapeHtml(x.video.id)}')">Mark posted</button>
+    </div>
+  `).join("") : '<div class="empty">Nothing ready to post right now.</div>';
+}
+
+// ---------- Competitor tracker ----------
+function renderCompetitors() {
+  const showClientCol = globalClientFilter === "all";
+  document.querySelector("#view-competitors thead tr").innerHTML =
+    (showClientCol ? "<th>Client</th>" : "") + "<th>Competitor</th><th>Platforms</th><th>Followers</th><th>Eng. rate</th><th>Posts/wk</th><th>30d growth</th>";
+
+  const comps = [];
+  filteredClients().forEach(client => (client.competitors || []).forEach(c => comps.push({ client, c })));
+  document.getElementById("compRows").innerHTML = comps.map(({ client, c }) => `
+    <tr>
+      ${showClientCol ? `<td>${escapeHtml(client.displayName)}</td>` : ""}
+      <td><b>${escapeHtml(c.name)}</b> <span class="badge tag-${c.tag}">${escapeHtml(c.tag)}</span></td>
+      <td>${(c.platforms||[]).map(p => `<span class="platform-dot" style="background:${platformColor(p)}"></span>${escapeHtml(p)}`).join(" ")}</td>
+      <td>${fmtNum(c.followers)}</td><td>${c.engagementRate}%</td><td>${c.postsPerWeek}</td>
+      <td style="color:${c.growth30d >= 0 ? 'var(--green)' : 'var(--red)'}">${c.growth30d >= 0 ? "+" : ""}${c.growth30d}%</td>
+    </tr>
+  `).join("");
+  document.getElementById("compEmpty").style.display = comps.length ? "none" : "block";
+}
+
+// ---------- Analytics ----------
+function renderAnalytics() {
+  const clients = filteredClients();
+  const showClientPrefix = clients.length > 1;
+  // Group by client+platform so "all clients" shows one series per
+  // client/platform pair instead of merging different clients' followers.
+  const groups = {};
+  clients.forEach(client => (client.analytics || []).forEach(r => {
+    const key = client.client + "|" + r.platform;
+    (groups[key] = groups[key] || { client, platform: r.platform, rows: [] }).rows.push(r);
+  }));
+  Object.values(groups).forEach(g => g.rows.sort((a,b) => a.date.localeCompare(b.date)));
+
+  const latest = Object.values(groups).map(g => g.rows[g.rows.length-1]);
+  const totalFollowers = latest.reduce((n,r) => n + (r.followers||0), 0);
+  const totalImpr = Object.values(groups).reduce((n,g) => n + g.rows.reduce((m,r)=>m+(r.impressions||0),0), 0);
+  const avgEng = latest.length ? (latest.reduce((n,r) => n + (r.engagementRate||0),0) / latest.length).toFixed(1) : "—";
+  document.getElementById("anStats").innerHTML = [
+    { label: "Total followers", value: fmtNum(totalFollowers) },
+    { label: "Total impressions", value: fmtNum(totalImpr) },
+    { label: "Avg. engagement rate", value: avgEng + "%" },
+  ].map(s => `<div class="stat-card"><div class="label">${s.label}</div><div class="value">${s.value}</div></div>`).join("");
+
+  const series = Object.values(groups).map(g => ({
+    name: showClientPrefix ? `${g.client.displayName} · ${g.platform}` : g.platform,
+    color: platformColor(g.platform),
+    points: g.rows.map(r => ({ x: r.date.slice(5), y: r.followers || 0 }))
+  }));
+  const chartEl = document.getElementById("anChart");
+  if (series.length) {
+    drawLineChart(chartEl, series, {});
+    document.getElementById("anLegend").innerHTML = series.map(s => `<span><span class="sw" style="background:${s.color}"></span>${escapeHtml(s.name)}</span>`).join("");
+  } else {
+    chartEl.innerHTML = '<div class="empty">No analytics entered yet.</div>';
+    document.getElementById("anLegend").innerHTML = "";
+  }
+}
+
+// ---------- News ----------
+let newsCategory = "All";
+function renderNews() {
+  const relevant = globalClientFilter === "all" ? NEWS : NEWS.filter(n => !n.relevantClients || n.relevantClients.includes(globalClientFilter));
+  const cats = ["All", ...Array.from(new Set(relevant.map(n => n.category)))];
+  document.getElementById("newsChips").innerHTML = cats.map(c => `<div class="chip ${c === newsCategory ? "active" : ""}" data-c="${c}">${escapeHtml(c)}</div>`).join("");
+  document.querySelectorAll("#newsChips .chip").forEach(el => el.onclick = () => { newsCategory = el.dataset.c; renderNews(); });
+
+  const items = relevant.filter(n => newsCategory === "All" || n.category === newsCategory);
+  document.getElementById("newsList").innerHTML = items.length ? items.map(n => `
+    <div class="row"><div class="left"><b><a href="${n.url}" target="_blank" rel="noopener">${escapeHtml(n.title)}</a></b>
+    <div class="meta">${escapeHtml(n.source)} · ${escapeHtml(n.date)}</div></div>
+    <span class="badge" style="background:var(--card2);color:var(--sub)">${escapeHtml(n.category)}</span></div>
+  `).join("") : '<div class="empty">Nothing filed under this category yet.</div>';
+}
+
+// ---------- Sync ----------
+// A paste can contain more than one report stacked together (the editor
+// dashboard generates one block per client in a single copy) — split on the
+// header line and apply each block independently.
+function applyReportBlock(text, overrides) {
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+  const clientLine = lines.find(l => l.startsWith("Client:"));
+  if (!clientLine) return { applied: 0, bad: [], error: "Could not find a \"Client:\" line." };
+  const clientSlug = clientLine.replace("Client:", "").trim();
+  const client = CLIENTS.find(c => c.client === clientSlug);
+  if (!client) return { applied: 0, bad: [], error: `No configured client matches "${clientSlug}".` };
+
+  const dividerIdx = lines.indexOf("---");
+  const dataLines = dividerIdx >= 0 ? lines.slice(dividerIdx + 1) : [];
+  let applied = 0, bad = [];
+  dataLines.forEach(line => {
+    if (line.startsWith("(no changes") || line.startsWith("(nothing")) return;
+    const parts = line.split("|").map(p => p.trim());
+    if (parts.length < 2) { bad.push(line); return; }
+    const [videoId, statusRaw, note] = parts;
+    const status = statusRaw.toLowerCase();
+    const validVideo = (client.videos || []).some(v => v.id === videoId);
+    // Anything a client portal or the editor dashboard can legitimately report.
+    // in_review = editor marked delivered. concept_pending/with_editor here mean
+    // "sent back with a note" (request changes / request revisions), not a fresh start.
+    const validStatus = ["concept_pending","to_film","filmed","ready_to_edit","rejected","with_editor","client_review","ready_to_post","in_review"].includes(status);
+    if (!validVideo || !validStatus) { bad.push(line); return; }
+    const key = client.client + ":" + videoId;
+    overrides[key] = Object.assign({}, overrides[key], { status, note: note || null });
+    applied++;
+  });
+  return { applied, bad, error: null };
+}
+
+document.getElementById("pasteBtn").onclick = () => {
+  const text = document.getElementById("pasteInput").value.trim();
+  const resultBox = document.getElementById("pasteResult");
+  if (!text) { resultBox.innerHTML = '<span style="color:var(--red)">Paste a report first.</span>'; return; }
+
+  const blocks = text.split(/(?=FULLY SOCIAL OS STATUS REPORT)/).map(b => b.trim()).filter(Boolean);
+  const overrides = loadOverrides();
+  let totalApplied = 0, allBad = [], errors = [];
+  blocks.forEach(block => {
+    const r = applyReportBlock(block, overrides);
+    if (r.error) errors.push(r.error);
+    totalApplied += r.applied;
+    allBad = allBad.concat(r.bad);
+  });
+  saveOverrides(overrides);
+  resultBox.innerHTML = `<span style="color:var(--green)">${totalApplied} update(s) applied${blocks.length > 1 ? ` across ${blocks.length} report(s)` : ""}.</span>` +
+    (errors.length ? `<br><span style="color:var(--red)">${errors.map(escapeHtml).join("<br>")}</span>` : "") +
+    (allBad.length ? `<br><span style="color:var(--red)">${allBad.length} line(s) not understood:<br>${allBad.map(escapeHtml).join("<br>")}</span>` : "");
+  renderAll();
+};
+
+function renderAll() {
+  renderGlobalClientFilter();
+  renderHome(); renderCalendar(); renderSchedule(); renderReview(); renderPost(); renderCompetitors(); renderAnalytics(); renderNews();
+}
+renderAll();
+initRouter("home");
+</script>
+</body>
+</html>

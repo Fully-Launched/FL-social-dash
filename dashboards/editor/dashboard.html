@@ -1,0 +1,1614 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fully Social OS — Editor Queue</title>
+<style>:root {
+  --bg:#0b0b0d; --sidebar:#111113; --card:#18181b; --card2:#1e1e22;
+  --border:#2a2a2e; --ink:#f2f2f0; --sub:#95958f; --sub2:#6e6e69;
+  --accent:#f2b705; --accent-ink:#181300;
+  --green:#22c55e; --red:#ef4444; --amber:#f59e0b; --purple:#a78bfa;
+  --instagram:#ec4899; --facebook:#3b82f6; --twitter:#38bdf8;
+  --linkedin:#0a66c2; --tiktok:#2dd4bf;
+  --status-concept_pending:#fb7185; --status-to_film:#f59e0b; --status-filmed:#3b82f6;
+  --status-ready_to_edit:#a78bfa; --status-rejected:#ef4444; --status-with_editor:#2dd4bf;
+  --status-in_review:#818cf8; --status-client_review:#d946ef;
+  --status-ready_to_post:#22c55e; --status-posted:#6e6e69;
+}
+* { box-sizing:border-box; }
+html, body { height:100%; }
+body {
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+  display:flex; min-height:100vh;
+}
+a { color:inherit; }
+
+/* Sidebar */
+.sidebar {
+  width:230px; flex:0 0 230px; background:var(--sidebar); border-right:1px solid var(--border);
+  padding:20px 14px; position:sticky; top:0; height:100vh; overflow-y:auto;
+}
+.brand { display:flex; align-items:center; gap:9px; padding:6px 8px 4px; font-weight:700; font-size:1.02rem; }
+.brand .dot { width:10px; height:10px; border-radius:3px; background:var(--accent); flex:0 0 auto; }
+.sync-badge { padding:0 8px 20px; font-size:0.72rem; color:var(--sub); line-height:1.4; min-height:1.4em; }
+.edit-panel textarea { font:0.88rem/1.5 inherit; }
+.nav-item {
+  display:flex; align-items:center; gap:11px; padding:9px 11px; border-radius:9px;
+  color:var(--sub); font-size:0.88rem; cursor:pointer; margin-bottom:2px; user-select:none;
+  border:1px solid transparent;
+}
+.nav-item:hover { background:var(--card); color:var(--ink); }
+.nav-item.active { background:rgba(242,183,5,0.12); color:var(--accent); border-color:rgba(242,183,5,0.25); font-weight:600; }
+.nav-item .ic { width:18px; text-align:center; flex:0 0 auto; }
+.nav-section-label { font-size:0.68rem; text-transform:uppercase; letter-spacing:.06em; color:var(--sub2); padding:16px 11px 6px; }
+
+/* Main */
+.main { flex:1; min-width:0; padding:30px 36px 90px; }
+.page-head { margin-bottom:24px; }
+.page-head h1 { font-size:1.4rem; margin:0 0 4px; }
+.page-head p { margin:0; color:var(--sub); font-size:0.9rem; }
+.view { display:none; }
+.view.active { display:block; }
+
+/* Chips / filters */
+.chip-row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:22px; }
+.chip {
+  padding:6px 13px; border-radius:999px; border:1px solid var(--border); background:var(--card);
+  color:var(--sub); font-size:0.82rem; cursor:pointer; white-space:nowrap;
+}
+.chip.active { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:600; }
+
+/* Stat cards */
+.stat-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; margin-bottom:26px; }
+.stat-card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:18px 20px; }
+.stat-card .label { font-size:0.78rem; color:var(--sub); margin-bottom:8px; }
+.stat-card .value { font-size:1.7rem; font-weight:700; }
+.stat-card .delta { font-size:0.78rem; margin-top:6px; }
+.stat-card .delta.up { color:var(--green); }
+.stat-card .delta.down { color:var(--red); }
+
+/* Section cards on dashboard home */
+.section-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; }
+.section-card {
+  background:var(--card); border:1px solid var(--border); border-radius:14px; padding:18px 20px;
+  cursor:pointer;
+}
+.section-card:hover { border-color:var(--accent); }
+.section-card .ic { font-size:1.3rem; margin-bottom:10px; display:block; }
+.section-card h3 { margin:0 0 4px; font-size:1rem; }
+.section-card p { margin:0 0 10px; color:var(--sub); font-size:0.83rem; }
+.section-card .tag { color:var(--accent); font-size:0.78rem; font-weight:600; }
+
+/* Generic card / list rows */
+.card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:18px 20px; margin-bottom:14px; }
+.card h2 { font-size:1rem; margin:0 0 14px; }
+.row { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 0; border-bottom:1px solid var(--border); }
+.row:last-child { border-bottom:none; }
+.row .left b { display:block; font-size:0.93rem; }
+.row .left .meta { font-size:0.8rem; color:var(--sub); margin-top:2px; }
+.empty { color:var(--sub2); font-size:0.85rem; padding:14px 0; }
+
+/* Video card (compact — used in calendars/queues) */
+.video-card { cursor:pointer; transition:border-color .1s; }
+.video-card:hover { border-color:var(--accent); }
+
+/* Video detail modal — the "click a card, see the full record" view,
+   shared by every dashboard so a video looks the same everywhere. */
+.modal-backdrop {
+  position:fixed; inset:0; background:rgba(0,0,0,0.62); z-index:1000;
+  display:flex; align-items:flex-start; justify-content:center;
+  padding:5vh 20px; overflow-y:auto;
+}
+.modal-backdrop.hidden { display:none; }
+.modal-box {
+  background:var(--card); border:1px solid var(--border); border-radius:16px;
+  max-width:620px; width:100%; padding:26px 28px 24px; position:relative;
+}
+.modal-close {
+  position:absolute; top:16px; right:16px; background:var(--card2); border:1px solid var(--border);
+  border-radius:8px; width:30px; height:30px; display:flex; align-items:center; justify-content:center;
+  cursor:pointer; color:var(--sub); font-size:1rem; line-height:1;
+}
+.modal-box h2 { font-size:1.15rem; margin:0 26px 4px 0; }
+.modal-box .modal-meta { color:var(--sub); font-size:0.85rem; margin-bottom:16px; }
+.modal-field { margin:0 0 14px; }
+.modal-field b { display:block; font-size:0.72rem; text-transform:uppercase; letter-spacing:.04em; color:var(--sub); margin-bottom:4px; }
+.modal-field div, .modal-field p { font-size:0.92rem; line-height:1.55; margin:0; white-space:pre-wrap; }
+.modal-dates { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:0 0 16px; }
+.modal-dates div { background:var(--card2); border-radius:10px; padding:10px 12px; }
+.modal-dates .lbl { font-size:0.7rem; text-transform:uppercase; color:var(--sub); margin-bottom:2px; }
+.modal-links { display:flex; gap:8px; flex-wrap:wrap; margin:0 0 18px; }
+.modal-actions { display:flex; gap:8px; flex-wrap:wrap; padding-top:14px; border-top:1px solid var(--border); }
+
+/* Badges */
+.badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:0.76rem; font-weight:600; white-space:nowrap; }
+.badge.tag-direct { background:rgba(239,68,68,0.15); color:#f87171; }
+.badge.tag-indirect { background:rgba(245,158,11,0.15); color:#fbbf24; }
+.badge.tag-aspirational { background:rgba(167,139,250,0.15); color:#c4b5fd; }
+.platform-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; }
+
+/* Table */
+table { width:100%; border-collapse:collapse; font-size:0.85rem; }
+th { text-align:left; color:var(--sub); font-weight:600; font-size:0.75rem; text-transform:uppercase; letter-spacing:.04em; padding:0 10px 10px; }
+td { padding:12px 10px; border-top:1px solid var(--border); }
+tr:hover td { background:var(--card2); }
+
+/* Calendar */
+.cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
+.cal-dow { font-size:0.72rem; color:var(--sub2); text-transform:uppercase; letter-spacing:.05em; padding:0 4px 6px; }
+.cal-cell { background:var(--card); border:1px solid var(--border); border-radius:10px; min-height:88px; padding:8px; min-width:0; overflow:hidden; }
+.cal-cell.today { border-color:var(--accent); }
+.cal-cell .daynum { font-size:0.78rem; color:var(--sub); margin-bottom:6px; }
+.cal-chip { font-size:0.7rem; padding:2px 6px; border-radius:5px; margin-bottom:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+
+/* Chart */
+.chart-wrap { margin:6px 0 4px; }
+.chart-legend { display:flex; gap:16px; font-size:0.78rem; color:var(--sub); margin-top:8px; flex-wrap:wrap; }
+.chart-legend span { display:inline-flex; align-items:center; gap:5px; }
+.chart-legend .sw { width:9px; height:9px; border-radius:2px; }
+
+/* Buttons / inputs */
+button, .btn { font:inherit; font-size:0.85rem; padding:8px 15px; border-radius:9px; border:1px solid var(--border); background:var(--card2); color:var(--ink); cursor:pointer; }
+button.primary, .btn.primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:600; }
+button.reject { color:var(--red); }
+a.btn { text-decoration:none; display:inline-block; }
+textarea, input[type=text] { width:100%; font:inherit; padding:10px 12px; border-radius:9px; border:1px solid var(--border); background:var(--bg); color:var(--ink); }
+textarea { font:12px/1.5 ui-monospace,monospace; }
+
+.grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+@media (max-width:760px) { .grid-2 { grid-template-columns:1fr; } .sidebar { display:none; } }
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="brand"><span class="dot"></span> Fully Social OS</div>
+  <div class="nav-item active" data-view="queue"><span class="ic">🎞️</span> To Edit</div>
+  <div class="nav-item" data-view="calendar"><span class="ic">📅</span> Calendar</div>
+  <div class="nav-item" data-view="delivered"><span class="ic">📤</span> Delivered</div>
+  <div class="nav-item" data-view="docs"><span class="ic">📄</span> Important Documents</div>
+  <div class="nav-section-label">Sync</div>
+  <div class="nav-item" data-view="report"><span class="ic">📋</span> Send status report</div>
+</nav>
+
+<main class="main">
+
+  <section class="view active" id="view-queue">
+    <div class="page-head"><h1>To Edit</h1><p>Every video currently assigned, across every client. A video isn't done when you deliver it — it's done when its tag says "Ready to post." If it comes back here with a 🔄, the owner or the client asked for a change before that can happen.</p></div>
+    <div class="chip-row" id="editorChips"></div>
+    <div id="queueList"></div>
+  </section>
+
+  <section class="view" id="view-calendar">
+    <div class="page-head"><h1>Calendar</h1><p>Due-to-edit dates for everything currently assigned.</p></div>
+    <div class="chip-row" id="calEditorChips"></div>
+    <div class="card"><div class="cal-grid" id="calGrid"></div></div>
+  </section>
+
+  <section class="view" id="view-delivered">
+    <div class="page-head"><h1>Delivered</h1><p>Videos you've marked delivered this session — for your own reference until the operator applies the report.</p></div>
+    <div id="deliveredList"></div>
+  </section>
+
+  <section class="view" id="view-docs">
+    <div class="page-head"><h1>Important Documents</h1><p>General guidance for editing on this account — not client-specific, that lives on each video's card.</p></div>
+    <div class="card"><div id="docsList"></div></div>
+  </section>
+
+  <section class="view" id="view-report">
+    <div class="page-head"><h1>Send status report</h1><p>Generate a report for everything you've marked delivered, then send it to the operator to apply.</p></div>
+    <button class="primary" id="reportBtn" style="margin-bottom:14px">Generate status report</button>
+    <div class="card" id="reportBox" style="display:none">
+      <textarea id="reportText" rows="8" readonly></textarea>
+      <div style="color:var(--sub);font-size:0.85rem;margin-top:8px">Copy this and send it to whoever runs the operator dashboard — they'll paste it into "Apply status report."</div>
+    </div>
+  </section>
+
+</main>
+
+<script>// Shared helpers for both dashboards. Inlined by build.py — keep this
+// framework-free and dependency-free (no CDN, no bundler).
+
+function escapeHtml(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+}
+
+function fmtNum(n) {
+  if (n == null) return "—";
+  if (Math.abs(n) >= 1000000) return (n / 1000000).toFixed(1) + "M";
+  if (Math.abs(n) >= 1000) return (n / 1000).toFixed(1) + "K";
+  return String(n);
+}
+
+function todayISO() { return new Date().toISOString().slice(0, 10); }
+
+// URL-safe base64, used to hand a small JSON payload (a new video's fields)
+// from the operator dashboard to a specific client's own live portal as a
+// one-shot query param — see the "quick action" links in both templates.
+function base64UrlEncode(str) {
+  return btoa(unescape(encodeURIComponent(str))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function base64UrlDecode(str) {
+  str = str.replace(/-/g, "+").replace(/_/g, "/");
+  while (str.length % 4) str += "=";
+  return decodeURIComponent(escape(atob(str)));
+}
+
+const PLATFORM_COLOR = {
+  instagram: "var(--instagram)", facebook: "var(--facebook)",
+  twitter: "var(--twitter)", "twitter/x": "var(--twitter)", x: "var(--twitter)",
+  linkedin: "var(--linkedin)", tiktok: "var(--tiktok)"
+};
+function platformColor(p) { return PLATFORM_COLOR[String(p || "").toLowerCase()] || "var(--sub)"; }
+
+// Hash format is plain "#<view>" for normal navigation (unchanged), or
+// "#s_<base64url JSON>" when a link needs to hand this page one-shot data
+// — operator mode, quick actions (see client-portal.template.html and
+// dashboards/template/README.md). Two things forced the "s_<opaque
+// token>" shape, both confirmed by direct testing against a published
+// claude.ai Artifact, not assumed:
+//   1. Query-string params (?foo=bar) never reach the embedded document —
+//      the wrapper doesn't forward them at all.
+//   2. The hash DOES reach it, but only when it looks like a plain
+//      identifier. "#?operator=1" arrived as an empty hash — the wrapper
+//      silently drops anything containing "?", "=", "&". A bare
+//      base64url token (letters/digits/-/_ only, which is exactly what
+//      base64UrlEncode produces) survives.
+// initRouter only ever looks at the <view> part; read parseHashParams()
+// yourself for <params>, and do it before initRouter's first activate()
+// call, which immediately overwrites the hash with just the view name.
+function parseHashParams() {
+  const raw = window.location.hash.replace(/^#/, "");
+  if (raw.startsWith("s_")) {
+    try {
+      const state = JSON.parse(base64UrlDecode(raw.slice(2)));
+      const params = new URLSearchParams();
+      Object.entries(state).forEach(([k, v]) => { if (v != null && k !== "view") params.set(k, v); });
+      return { view: state.view || "", params };
+    } catch (e) { /* malformed token — fall through as if it were a plain view name */ }
+  }
+  return { view: raw, params: new URLSearchParams() };
+}
+// The encoding side of the above — build a link that hands a specific
+// artifact one-shot state via its hash. `state.view` (optional) is which
+// page to land on; everything else becomes a `parseHashParams().params`
+// entry the receiving page reads by key.
+function buildHashState(state) {
+  return "#s_" + base64UrlEncode(JSON.stringify(state));
+}
+
+// Sidebar view router: nav items carry data-view="<id>"; sections carry
+// class="view" id="view-<id>". Call initRouter() once per page after render.
+function initRouter(defaultView) {
+  const items = document.querySelectorAll(".nav-item[data-view]");
+  function activate(view) {
+    document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+    const el = document.getElementById("view-" + view);
+    if (el) el.classList.add("active");
+    items.forEach(i => i.classList.toggle("active", i.dataset.view === view));
+    window.location.hash = view;
+  }
+  items.forEach(i => i.addEventListener("click", () => activate(i.dataset.view)));
+  const fromHash = parseHashParams().view;
+  activate(fromHash && document.getElementById("view-" + fromHash) ? fromHash : defaultView);
+  return activate;
+}
+
+// Minimal dependency-free multi-series line chart, rendered as inline SVG.
+// series: [{ name, color, points: [{x: 'label', y: number}, ...] }]
+function drawLineChart(container, series, opts) {
+  opts = opts || {};
+  const w = opts.width || 640, h = opts.height || 200, pad = { t: 10, r: 10, b: 22, l: 40 };
+  const allY = series.flatMap(s => s.points.map(p => p.y));
+  const maxY = Math.max(1, ...allY), minY = Math.min(0, ...allY);
+  const xLabels = series[0] ? series[0].points.map(p => p.x) : [];
+  const n = xLabels.length || 1;
+  const xAt = i => pad.l + (i / Math.max(1, n - 1)) * (w - pad.l - pad.r);
+  const yAt = v => (h - pad.b) - ((v - minY) / (maxY - minY || 1)) * (h - pad.t - pad.b);
+
+  let svg = `<svg viewBox="0 0 ${w} ${h}" width="100%" style="overflow:visible">`;
+  // gridlines
+  for (let g = 0; g <= 3; g++) {
+    const gy = pad.t + (g / 3) * (h - pad.t - pad.b);
+    svg += `<line x1="${pad.l}" y1="${gy}" x2="${w - pad.r}" y2="${gy}" stroke="var(--border)" stroke-width="1"/>`;
+  }
+  series.forEach(s => {
+    const pts = s.points.map((p, i) => `${xAt(i)},${yAt(p.y)}`).join(" ");
+    svg += `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+  });
+  // x labels: first, middle, last only (keep it readable)
+  [0, Math.floor((n - 1) / 2), n - 1].forEach(i => {
+    if (xLabels[i] == null) return;
+    svg += `<text x="${xAt(i)}" y="${h - 4}" font-size="9" fill="var(--sub2)" text-anchor="middle">${escapeHtml(xLabels[i])}</text>`;
+  });
+  svg += `</svg>`;
+  container.innerHTML = svg;
+}
+
+function statusBadge(status, labelMap) {
+  const label = (labelMap && labelMap[status]) || status;
+  return `<span class="badge" style="background:color-mix(in srgb, var(--status-${status}) 18%, transparent); color:var(--status-${status})">${escapeHtml(label)}</span>`;
+}
+
+const STATUS_LABEL = {
+  concept_pending: "Concept: awaiting client", to_film: "To film", filmed: "Filmed",
+  ready_to_edit: "Ready to edit", rejected: "Rejected", with_editor: "With editor",
+  in_review: "In review (owner)", client_review: "Final review (client)",
+  ready_to_post: "Ready to post", posted: "Posted"
+};
+
+// Full lifecycle, in order. Self-serve clients use all of it; concierge
+// clients (system: "concierge") skip concept_pending/to_film entirely —
+// Tait films the interview himself, so there's no client-facing pre-film
+// approval step. Both systems share every stage from "filmed" onward.
+const STATUS_ORDER = ["concept_pending","to_film","filmed","ready_to_edit","with_editor","in_review","client_review","ready_to_post","posted"];
+
+// ---------- Video detail modal ----------
+// The "Airtable, but every row is a video card" piece: one shared detail
+// view for a video record, used by the client portal, operator dashboard,
+// and editor dashboard alike. Only `actionsHtml` differs per audience —
+// pass in whatever buttons make sense for who's looking.
+function ensureModalRoot() {
+  let root = document.getElementById("videoModalRoot");
+  if (root) return root;
+  root = document.createElement("div");
+  root.id = "videoModalRoot";
+  root.className = "modal-backdrop hidden";
+  root.innerHTML = `<div class="modal-box" id="videoModalBox"></div>`;
+  root.addEventListener("click", e => { if (e.target === root) closeVideoModal(); });
+  document.body.appendChild(root);
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeVideoModal(); });
+  return root;
+}
+function closeVideoModal() {
+  const root = document.getElementById("videoModalRoot");
+  if (root) root.classList.add("hidden");
+}
+function modalField(label, value) {
+  if (!value) return "";
+  return `<div class="modal-field"><b>${escapeHtml(label)}</b><div>${escapeHtml(value)}</div></div>`;
+}
+// client: { displayName, driveFolders } — either a full client config or
+// something shaped like one. video: the effective (override-merged) video.
+// opts.actionsHtml: buttons rendered at the bottom, audience-specific.
+// opts.linkKeys: which driveFolders entries to show as quick links (default: all present).
+// opts.hideEditorBrief: true for the client portal — editing instructions
+// (story beats, must-keep, music, CTA, specs) are for the editor and the
+// owner, never for the person who filmed the footage.
+function openVideoModal(client, video, opts) {
+  opts = opts || {};
+  ensureModalRoot();
+  const f = client.driveFolders || {};
+  const linkKeys = opts.linkKeys || Object.keys(f);
+  const linkLabels = { root: "Client folder", footageUploads: "Footage", finalEdits: "Deliver cut", brandVoice: "Brand voice", hooks: "Hooks", assets: "Assets" };
+  const eb = video.editorBrief || {};
+  const hasEditorBrief = !opts.hideEditorBrief && Object.values(eb).some(v => v);
+
+  document.getElementById("videoModalBox").innerHTML = `
+    <div class="modal-close" onclick="closeVideoModal()">✕</div>
+    <h2>${escapeHtml(video.title || video.id)}</h2>
+    <div class="modal-meta">${escapeHtml(client.displayName || "")} · ${(video.platform||[]).join(" · ")} ${statusBadge(video.status, STATUS_LABEL)}</div>
+
+    <div class="modal-dates">
+      <div><div class="lbl">Due to film</div>${escapeHtml(video.dueToFilm || "—")}</div>
+      <div><div class="lbl">Due to edit</div>${escapeHtml(video.dueToEdit || "—")}</div>
+      <div><div class="lbl">Post date</div>${escapeHtml(video.postDate || "—")}</div>
+    </div>
+
+    ${modalField("Overview", video.overview)}
+    ${modalField("Hook", video.hook)}
+    ${modalField("Body / talking points", video.body)}
+    ${modalField("Filming direction", video.filmingDirection)}
+    ${modalField("Caption", video.caption)}
+    ${video.note ? modalField("Note", video.note) : ""}
+
+    ${hasEditorBrief ? `
+      <div class="modal-field"><b>Editor brief</b></div>
+      ${modalField("Story beats", eb.storyBeats)}
+      ${modalField("Must keep", eb.mustKeep)}
+      ${modalField("Captions style", eb.captionsStyle)}
+      ${modalField("Music / pacing vibe", eb.musicVibe)}
+      ${modalField("CTA overlay", eb.ctaOverlay)}
+      ${modalField("Platform specs", eb.platformSpecs)}
+      ${video.assignedEditor ? modalField("Assigned editor", video.assignedEditor) : ""}
+    ` : ""}
+
+    <div class="modal-links">
+      ${linkKeys.filter(k => f[k]).map(k => `<a class="btn" href="${f[k]}" target="_blank" rel="noopener">${escapeHtml(linkLabels[k] || k)}</a>`).join("")}
+    </div>
+
+    ${opts.actionsHtml ? `<div class="modal-actions">${opts.actionsHtml}</div>` : ""}
+  `;
+  document.getElementById("videoModalRoot").classList.remove("hidden");
+}
+</script>
+<script>
+const CLIENTS = [
+  {
+    "client": "grad-gig",
+    "displayName": "Grad Gig",
+    "clientSystem": "self-serve",
+    "planWindow": {
+      "start": "2026-08-24",
+      "end": "2026-09-18"
+    },
+    "driveFolders": {
+      "root": "https://drive.google.com/drive/folders/1nOD5dj0UU_0h715kvmHik3j4FJoXYTU2",
+      "footageUploads": "https://drive.google.com/drive/folders/1I4TOm8LQJoFXIiJXFQI32vXQI-wgkmdV",
+      "finalEdits": "https://drive.google.com/drive/folders/15vaYJEGnbtaEn5OLsX2bA1HAPbbDPlat",
+      "brandVoice": "https://drive.google.com/drive/folders/1sHIpielrUZdKaSm9xzoJqVI4r3NxM3nf",
+      "hooks": "https://drive.google.com/drive/folders/1fpsX1YY_tGGTnamnuP2CwYTiTGyIrcMg",
+      "assets": "https://drive.google.com/drive/folders/1GMPgjZpWdYs2OqU36jvDIZ1d4uoCnFq0",
+      "customerData": "https://drive.google.com/drive/folders/1IVpu7d3KAJSPLPXT6ey-Zxybt5rHns5q",
+      "contentIdeas": "https://drive.google.com/drive/folders/1RBPUmZOg7DbZiemX50RDhFgLyek8Gr7X"
+    },
+    "videos": [],
+    "pendingConcepts": [],
+    "competitors": [],
+    "analytics": []
+  },
+  {
+    "client": "test-fully-launched",
+    "displayName": "Fully Launched",
+    "clientSystem": "self-serve",
+    "portalUrl": "https://claude.ai/code/artifact/5e9e5b50-632e-49b7-96a5-95aa65f1f3d5",
+    "planWindow": {
+      "start": "2026-08-01",
+      "end": "2026-08-31"
+    },
+    "driveFolders": {
+      "root": "https://drive.google.com/drive/folders/1X6CJurBCvH7N3fRQJ69uPuC0g4IlOD8z",
+      "footageUploads": "https://drive.google.com/drive/folders/1lX8BlfaGjouCkTQaBPZzgKS67PVl3d3C",
+      "finalEdits": "https://drive.google.com/drive/folders/1OMsrbc405M_DDldLiU7rCSMS49-Xjei4",
+      "brandVoice": "https://drive.google.com/drive/folders/1Dw8c4bp1hqA4QTu7hGhPw_5SlwAR7fU6",
+      "hooks": "https://drive.google.com/drive/folders/1js5nc8MOfqBHcnX6hKooZJpXnhzvI0_V",
+      "assets": "https://drive.google.com/drive/folders/1iulfu-MtQnQlpzwA7x0O2qEVtQOZ1Nph",
+      "customerData": "https://drive.google.com/drive/folders/1nPNSasymFcnKjtRh3U88UH8lC6JcGKiq",
+      "contentIdeas": "https://drive.google.com/drive/folders/1SSe2f8Mh4cDDXy8IspE0qsdr0IiCUCWJ"
+    },
+    "videos": [
+      {
+        "id": "fl-w0-01",
+        "title": "The one mistake almost every beginner makes",
+        "platform": [
+          "instagram",
+          "tiktok"
+        ],
+        "hook": "You're probably doing your warm-up backwards.",
+        "overview": "A quick correction video aimed at beginners who've never been shown the basics.",
+        "filmingDirection": "Talking head, phone on a tripod, natural light, show the wrong way then the right way.",
+        "caption": "Fix this one thing and everything else gets easier.",
+        "dueToFilm": "2026-08-28",
+        "dueToEdit": null,
+        "postDate": null,
+        "status": "concept_pending",
+        "note": null,
+        "assignedEditor": null,
+        "editorBrief": {
+          "storyBeats": null,
+          "mustKeep": null,
+          "captionsStyle": null,
+          "musicVibe": null,
+          "ctaOverlay": null,
+          "platformSpecs": null
+        }
+      },
+      {
+        "id": "fl-w1-01",
+        "title": "What a real client week actually looks like",
+        "platform": [
+          "instagram"
+        ],
+        "hook": "No, it's not two-hour gym sessions every day.",
+        "overview": "Behind the scenes of an actual client's weekly plan, to reset expectations.",
+        "filmingDirection": "Talking head + screen recording of a real (anonymized) weekly plan.",
+        "caption": "This is what actually fits into a real schedule.",
+        "dueToFilm": "2026-08-10",
+        "dueToEdit": null,
+        "postDate": null,
+        "status": "to_film",
+        "note": null,
+        "assignedEditor": null,
+        "editorBrief": {
+          "storyBeats": null,
+          "mustKeep": null,
+          "captionsStyle": null,
+          "musicVibe": null,
+          "ctaOverlay": null,
+          "platformSpecs": null
+        }
+      },
+      {
+        "id": "fl-w1-02",
+        "title": "Why I stopped counting calories",
+        "platform": [
+          "instagram",
+          "tiktok"
+        ],
+        "hook": "I tracked every bite for three years. Here's what changed.",
+        "overview": "A personal story video about moving away from calorie counting toward a simpler approach.",
+        "filmingDirection": "Walk-and-talk, outdoors, natural light.",
+        "caption": "This isn't for everyone, but it might be for you.",
+        "dueToFilm": "2026-08-12",
+        "dueToEdit": null,
+        "postDate": null,
+        "status": "filmed",
+        "note": null,
+        "assignedEditor": null,
+        "editorBrief": {
+          "storyBeats": null,
+          "mustKeep": null,
+          "captionsStyle": null,
+          "musicVibe": null,
+          "ctaOverlay": null,
+          "platformSpecs": null
+        }
+      },
+      {
+        "id": "fl-w1-03",
+        "title": "Answering the question I get every single week",
+        "platform": [
+          "tiktok"
+        ],
+        "hook": "\"How long until I see results?\" Let's actually answer this.",
+        "overview": "A direct, honest answer to the most common DM question.",
+        "filmingDirection": "Talking head, on camera, direct address.",
+        "caption": "The honest timeline, not the marketing one.",
+        "dueToFilm": "2026-08-14",
+        "dueToEdit": null,
+        "postDate": null,
+        "status": "ready_to_edit",
+        "note": null,
+        "assignedEditor": null,
+        "editorBrief": {
+          "storyBeats": null,
+          "mustKeep": null,
+          "captionsStyle": null,
+          "musicVibe": null,
+          "ctaOverlay": null,
+          "platformSpecs": null
+        }
+      },
+      {
+        "id": "fl-w1-04",
+        "title": "A client's before-and-after, six months in",
+        "platform": [
+          "instagram",
+          "tiktok"
+        ],
+        "hook": "She almost quit in week three. Here's what week 24 looks like.",
+        "overview": "A real client transformation story, focused on the mindset shift not just the physical change.",
+        "filmingDirection": "Interview style with the client, plus b-roll of a session.",
+        "caption": "The physical change is the easy part to show. The mindset shift is the real story.",
+        "dueToFilm": "2026-08-16",
+        "dueToEdit": "2026-08-25",
+        "postDate": "2026-09-01",
+        "status": "with_editor",
+        "note": null,
+        "assignedEditor": "Morgan",
+        "editorBrief": {
+          "storyBeats": "Open on the week-3 low point (told in her own words), build through the middle, land on where she is now.",
+          "mustKeep": "The line where she says \"I almost texted you to cancel.\"",
+          "captionsStyle": "Burned-in captions, clean sans-serif, bottom third.",
+          "musicVibe": "Understated build, not triumphant until the final 5 seconds.",
+          "ctaOverlay": "Your week 3 doesn't decide your week 24.",
+          "platformSpecs": "9:16, under 45s, safe zone clear of bottom nav."
+        }
+      },
+      {
+        "id": "fl-w1-05",
+        "title": "The truth about rest days",
+        "platform": [
+          "instagram"
+        ],
+        "hook": "You're not lazy for needing a rest day. You're smart.",
+        "overview": "A myth-busting video about rest and recovery, aimed at people who feel guilty resting.",
+        "filmingDirection": "Talking head, home gym setting.",
+        "caption": "Rest is part of the plan, not a break from it.",
+        "dueToFilm": "2026-08-17",
+        "dueToEdit": "2026-08-26",
+        "postDate": "2026-09-02",
+        "status": "in_review",
+        "note": null,
+        "assignedEditor": "Morgan",
+        "editorBrief": {
+          "storyBeats": "Direct address, myth then correction, twice, then CTA.",
+          "mustKeep": "The line \"rest is part of the plan, not a break from it\" \u2014 verbatim, don't trim.",
+          "captionsStyle": "Burned-in captions, clean sans-serif.",
+          "musicVibe": "Calm, low-key, no big builds.",
+          "ctaOverlay": "Save this for your next rest-day guilt trip.",
+          "platformSpecs": "4:5, under 40s."
+        }
+      },
+      {
+        "id": "fl-w0-09",
+        "title": "Three questions to ask before hiring any coach",
+        "platform": [
+          "instagram",
+          "tiktok"
+        ],
+        "hook": "Ask any coach these three questions before you pay them anything.",
+        "overview": "A trust-building video that's honest even where it doesn't flatter the client's own business.",
+        "filmingDirection": "Talking head, direct address.",
+        "caption": "If a coach can't answer these clearly, that tells you something.",
+        "dueToFilm": "2026-08-08",
+        "dueToEdit": "2026-08-15",
+        "postDate": "2026-08-22",
+        "status": "client_review",
+        "note": null,
+        "assignedEditor": "Sam",
+        "editorBrief": {
+          "storyBeats": "Three questions, numbered on screen, quick cuts between each.",
+          "mustKeep": null,
+          "captionsStyle": "Numbered on-screen text.",
+          "musicVibe": "Neutral, informative pacing.",
+          "ctaOverlay": "Save this before your next consult call.",
+          "platformSpecs": "9:16, under 30s."
+        }
+      },
+      {
+        "id": "fl-w0-08",
+        "title": "What nobody tells you about motivation",
+        "platform": [
+          "instagram"
+        ],
+        "hook": "Motivation was never going to be enough. Here's what actually works.",
+        "overview": "A systems-over-motivation video, drawing on a personal low point.",
+        "filmingDirection": "Talking head, home setting, lower energy/more reflective tone.",
+        "caption": "Systems beat motivation every single time. Here's why.",
+        "dueToFilm": "2026-08-06",
+        "dueToEdit": "2026-08-13",
+        "postDate": "2026-08-20",
+        "status": "ready_to_post",
+        "note": null,
+        "assignedEditor": "Sam",
+        "editorBrief": {
+          "storyBeats": "Open on the low point, pivot to the system that replaced relying on motivation.",
+          "mustKeep": null,
+          "captionsStyle": "Burned-in captions, clean sans-serif.",
+          "musicVibe": "Reflective, builds slightly toward the end.",
+          "ctaOverlay": "Build the system. Skip waiting on motivation.",
+          "platformSpecs": "4:5, under 50s."
+        }
+      },
+      {
+        "id": "fl-w0-07",
+        "title": "The first session with every new client",
+        "platform": [
+          "instagram",
+          "tiktok"
+        ],
+        "hook": "Here's exactly what happens in a first session, no surprises.",
+        "overview": "A transparency video showing exactly what a first session looks like, to lower the barrier for hesitant leads.",
+        "filmingDirection": "POV/vlog style during an actual (consented) first session.",
+        "caption": "No guesswork. Here's exactly what to expect.",
+        "dueToFilm": "2026-08-01",
+        "dueToEdit": "2026-08-08",
+        "postDate": "2026-08-14",
+        "status": "posted",
+        "note": null,
+        "assignedEditor": "Sam",
+        "editorBrief": {
+          "storyBeats": "Chronological walkthrough of the session, quick cuts.",
+          "mustKeep": null,
+          "captionsStyle": "Burned-in captions.",
+          "musicVibe": "Light, welcoming.",
+          "ctaOverlay": "Book your first session \u2014 link in bio.",
+          "platformSpecs": "9:16, under 40s."
+        }
+      }
+    ],
+    "pendingConcepts": [
+      {
+        "id": "fl-cyc2-01",
+        "title": "Why 'no pain no gain' is mostly wrong",
+        "cycle": "clients/test-fully-launched/concepts/cycle-2.md",
+        "hook": "\"No pain no gain\" has probably held you back more than it's helped.",
+        "identity": "For the person who's been pushing through pain thinking it's required, and is quietly exhausted by it.",
+        "drive": "Comment 'RECOVER' for the actual rule to use instead.",
+        "status": "pending_approval"
+      }
+    ],
+    "competitors": [
+      {
+        "name": "IronWill Coaching",
+        "tag": "direct",
+        "platforms": [
+          "instagram",
+          "tiktok"
+        ],
+        "followers": 62000,
+        "engagementRate": 3.8,
+        "postsPerWeek": 6.0,
+        "growth30d": 1.4
+      },
+      {
+        "name": "PeakForm App",
+        "tag": "indirect",
+        "platforms": [
+          "instagram"
+        ],
+        "followers": 410000,
+        "engagementRate": 1.6,
+        "postsPerWeek": 10.0,
+        "growth30d": 2.2
+      },
+      {
+        "name": "Local Barbell Club",
+        "tag": "aspirational",
+        "platforms": [
+          "instagram",
+          "tiktok"
+        ],
+        "followers": 15000,
+        "engagementRate": 7.1,
+        "postsPerWeek": 3.0,
+        "growth30d": 4.8
+      }
+    ],
+    "analytics": [
+      {
+        "date": "2026-08-01",
+        "platform": "instagram",
+        "impressions": 9800,
+        "followers": 5200,
+        "engagementRate": 3.9
+      },
+      {
+        "date": "2026-08-08",
+        "platform": "instagram",
+        "impressions": 12400,
+        "followers": 5410,
+        "engagementRate": 4.2
+      },
+      {
+        "date": "2026-08-15",
+        "platform": "instagram",
+        "impressions": 15100,
+        "followers": 5680,
+        "engagementRate": 4.6
+      },
+      {
+        "date": "2026-08-01",
+        "platform": "tiktok",
+        "impressions": 6200,
+        "followers": 2100,
+        "engagementRate": 5.5
+      },
+      {
+        "date": "2026-08-08",
+        "platform": "tiktok",
+        "impressions": 8900,
+        "followers": 2380,
+        "engagementRate": 6.0
+      },
+      {
+        "date": "2026-08-15",
+        "platform": "tiktok",
+        "impressions": 11700,
+        "followers": 2750,
+        "engagementRate": 6.7
+      }
+    ]
+  },
+  {
+    "client": "test-grandpas-hardware",
+    "displayName": "Grandpa's Hardware (TEST DATA)",
+    "clientSystem": "concierge",
+    "planWindow": {
+      "start": "2026-08-01",
+      "end": "2026-08-31"
+    },
+    "driveFolders": {
+      "root": "#test-no-real-drive-folder",
+      "footageUploads": "#test-no-real-drive-folder",
+      "finalEdits": "#test-no-real-drive-folder",
+      "brandVoice": "#test-no-real-drive-folder",
+      "hooks": "#test-no-real-drive-folder",
+      "assets": "#test-no-real-drive-folder",
+      "customerData": "#test-no-real-drive-folder",
+      "contentIdeas": "#test-no-real-drive-folder"
+    },
+    "videos": [
+      {
+        "id": "gph-w1-01",
+        "title": "The tool nobody buys until they need it",
+        "platform": [
+          "facebook",
+          "instagram"
+        ],
+        "hook": "This sits on the shelf for months. Then someone needs it in an emergency.",
+        "filmingDirection": "Interview, shot on location by Tait \u2014 no self-filming for this client.",
+        "caption": "The stuff you don't think about until you really need it. That's what we're here for.",
+        "dueToFilm": null,
+        "dueToEdit": "2026-08-20",
+        "postDate": "2026-08-27",
+        "status": "filmed",
+        "note": null,
+        "assignedEditor": null,
+        "editorBrief": {
+          "storyBeats": null,
+          "mustKeep": null,
+          "captionsStyle": null,
+          "musicVibe": null,
+          "ctaOverlay": null,
+          "platformSpecs": null
+        }
+      },
+      {
+        "id": "gph-w1-02",
+        "title": "40 years behind the counter",
+        "platform": [
+          "facebook"
+        ],
+        "hook": "Four decades. Same corner. Here's what changed.",
+        "filmingDirection": "Interview, shot on location by Tait.",
+        "caption": "Forty years of helping this town fix things. A short look back.",
+        "dueToFilm": null,
+        "dueToEdit": "2026-08-21",
+        "postDate": "2026-08-28",
+        "status": "ready_to_edit",
+        "note": null,
+        "assignedEditor": null,
+        "editorBrief": {
+          "storyBeats": null,
+          "mustKeep": null,
+          "captionsStyle": null,
+          "musicVibe": null,
+          "ctaOverlay": null,
+          "platformSpecs": null
+        }
+      },
+      {
+        "id": "gph-w1-03",
+        "title": "How to actually pick the right screw",
+        "platform": [
+          "facebook",
+          "instagram"
+        ],
+        "hook": "Ask him this question and watch him light up.",
+        "filmingDirection": "Interview, shot on location by Tait.",
+        "caption": "The five-minute answer that'll save you three trips back to the store.",
+        "dueToFilm": null,
+        "dueToEdit": "2026-08-22",
+        "postDate": "2026-08-29",
+        "status": "with_editor",
+        "note": null,
+        "assignedEditor": "Priya",
+        "editorBrief": {
+          "storyBeats": "Straight interview answer, cut down to the essential 45s \u2014 no B-roll needed, his energy carries it.",
+          "mustKeep": "The moment he picks up three different screws to demonstrate \u2014 don't cut around it.",
+          "captionsStyle": "Burned-in captions, larger font (older-skewing audience reads this too).",
+          "musicVibe": "None, or barely-there \u2014 let him talk.",
+          "ctaOverlay": "Come ask him yourself \u2014 he loves this stuff.",
+          "platformSpecs": "1:1 or 4:5 for Facebook, under 60s."
+        }
+      },
+      {
+        "id": "gph-w0-09",
+        "title": "Why he still hand-writes the receipts",
+        "platform": [
+          "facebook"
+        ],
+        "hook": "Everyone asks why there's no card reader. Here's his answer.",
+        "filmingDirection": "Interview, shot on location by Tait.",
+        "caption": "Some things don't need fixing. This is one of them.",
+        "dueToFilm": null,
+        "dueToEdit": "2026-08-18",
+        "postDate": "2026-08-25",
+        "status": "in_review",
+        "note": null,
+        "assignedEditor": "Priya",
+        "editorBrief": {
+          "storyBeats": "Cold open on the receipt book, then his explanation.",
+          "mustKeep": "The line \"people remember a handshake, not a receipt code.\"",
+          "captionsStyle": "Burned-in captions, larger font.",
+          "musicVibe": "Warm, nostalgic, understated.",
+          "ctaOverlay": "Some things are worth keeping the old way.",
+          "platformSpecs": "1:1 or 4:5 for Facebook, under 45s."
+        }
+      },
+      {
+        "id": "gph-w0-08",
+        "title": "The regular who's been coming since 1998",
+        "platform": [
+          "facebook",
+          "instagram"
+        ],
+        "hook": "One customer, one store, twenty-six years.",
+        "filmingDirection": "Interview, shot on location by Tait.",
+        "caption": "Twenty-six years of showing up. That's the real story here.",
+        "dueToFilm": null,
+        "dueToEdit": "2026-08-14",
+        "postDate": "2026-08-21",
+        "status": "client_review",
+        "note": null,
+        "assignedEditor": "Priya",
+        "editorBrief": {
+          "storyBeats": "Split between the regular's memory and his own.",
+          "mustKeep": "Both of them laughing at the same old joke.",
+          "captionsStyle": "Burned-in captions, larger font.",
+          "musicVibe": "Warm, nostalgic.",
+          "ctaOverlay": "Loyalty isn't a program here. It's just how it works.",
+          "platformSpecs": "1:1 or 4:5 for Facebook, under 60s."
+        }
+      },
+      {
+        "id": "gph-w0-07",
+        "title": "What he keeps in his truck, always",
+        "platform": [
+          "facebook"
+        ],
+        "hook": "Five things. Never leaves without them.",
+        "filmingDirection": "Interview, shot on location by Tait.",
+        "caption": "The five things that live in his truck, no matter what.",
+        "dueToFilm": null,
+        "dueToEdit": "2026-08-07",
+        "postDate": "2026-08-14",
+        "status": "ready_to_post",
+        "note": null,
+        "assignedEditor": "Priya",
+        "editorBrief": {
+          "storyBeats": "Simple list format, five beats.",
+          "mustKeep": null,
+          "captionsStyle": "Numbered on-screen text.",
+          "musicVibe": "Light, folksy.",
+          "ctaOverlay": "What's in your truck?",
+          "platformSpecs": "1:1 or 4:5 for Facebook, under 40s."
+        }
+      },
+      {
+        "id": "gph-w0-06",
+        "title": "The busiest week of the year",
+        "platform": [
+          "facebook",
+          "instagram"
+        ],
+        "hook": "Storm season means one thing at this store.",
+        "filmingDirection": "Interview, shot on location by Tait.",
+        "caption": "When the forecast turns, so does this place. Here's what that week looks like.",
+        "dueToFilm": null,
+        "dueToEdit": "2026-08-01",
+        "postDate": "2026-08-08",
+        "status": "posted",
+        "note": null,
+        "assignedEditor": "Priya",
+        "editorBrief": {
+          "storyBeats": "Interview intercut with (described, not filmed) rush footage.",
+          "mustKeep": null,
+          "captionsStyle": "Burned-in captions, larger font.",
+          "musicVibe": "Building energy.",
+          "ctaOverlay": "Stock up before the storm, not during it.",
+          "platformSpecs": "1:1 or 4:5 for Facebook, under 50s."
+        }
+      }
+    ],
+    "pendingConcepts": [],
+    "competitors": [
+      {
+        "name": "Big Box Home",
+        "tag": "indirect",
+        "platforms": [
+          "facebook",
+          "instagram"
+        ],
+        "followers": 340000,
+        "engagementRate": 1.2,
+        "postsPerWeek": 8.0,
+        "growth30d": 0.4
+      },
+      {
+        "name": "Corner Fix-It",
+        "tag": "direct",
+        "platforms": [
+          "facebook"
+        ],
+        "followers": 2100,
+        "engagementRate": 5.8,
+        "postsPerWeek": 1.5,
+        "growth30d": 2.9
+      }
+    ],
+    "analytics": [
+      {
+        "date": "2026-08-01",
+        "platform": "facebook",
+        "impressions": 4100,
+        "followers": 1850,
+        "engagementRate": 4.4
+      },
+      {
+        "date": "2026-08-08",
+        "platform": "facebook",
+        "impressions": 5300,
+        "followers": 1920,
+        "engagementRate": 4.9
+      },
+      {
+        "date": "2026-08-15",
+        "platform": "facebook",
+        "impressions": 6900,
+        "followers": 2010,
+        "engagementRate": 5.3
+      }
+    ]
+  },
+  {
+    "client": "test-loop-coffee",
+    "displayName": "Loop Coffee Co. (TEST DATA)",
+    "clientSystem": "self-serve",
+    "planWindow": {
+      "start": "2026-08-01",
+      "end": "2026-08-31"
+    },
+    "driveFolders": {
+      "root": "#test-no-real-drive-folder",
+      "footageUploads": "#test-no-real-drive-folder",
+      "finalEdits": "#test-no-real-drive-folder",
+      "brandVoice": "#test-no-real-drive-folder",
+      "hooks": "#test-no-real-drive-folder",
+      "assets": "#test-no-real-drive-folder",
+      "customerData": "#test-no-real-drive-folder",
+      "contentIdeas": "#test-no-real-drive-folder"
+    },
+    "videos": [
+      {
+        "id": "loop-w0-01",
+        "title": "Why we roast in small batches",
+        "platform": [
+          "instagram",
+          "tiktok"
+        ],
+        "hook": "Everyone asks why we don't roast more at once. Here's why.",
+        "filmingDirection": "Talking head in the roastery, small batch visible.",
+        "caption": "Small batches, big flavor difference. Ask us why in the comments.",
+        "dueToFilm": "2026-08-24",
+        "dueToEdit": null,
+        "postDate": null,
+        "status": "concept_pending",
+        "note": null,
+        "assignedEditor": null,
+        "editorBrief": {
+          "storyBeats": null,
+          "mustKeep": null,
+          "captionsStyle": null,
+          "musicVibe": null,
+          "ctaOverlay": null,
+          "platformSpecs": null
+        },
+        "overview": "A quick explainer on why the roast profile changed this month \u2014 reassurance content for regulars who noticed.",
+        "body": "Open on the roaster. \"You might've noticed your bag tastes a little different this month.\" Explain the single change (roast curve tweak). \"Same beans, same farm \u2014 just dialed in better.\" Close on a cup pour."
+      },
+      {
+        "id": "loop-w1-01",
+        "title": "Why our beans taste different this month",
+        "platform": [
+          "instagram",
+          "tiktok"
+        ],
+        "hook": "We changed one thing about our roast \u2014 here's why.",
+        "filmingDirection": "Handheld, in the roastery. Show the roaster running.",
+        "caption": "One small change, a totally different cup. Come taste it.",
+        "dueToFilm": "2026-08-10",
+        "dueToEdit": null,
+        "postDate": null,
+        "status": "to_film",
+        "note": null,
+        "assignedEditor": null,
+        "editorBrief": {
+          "storyBeats": null,
+          "mustKeep": null,
+          "captionsStyle": null,
+          "musicVibe": null,
+          "ctaOverlay": null,
+          "platformSpecs": null
+        }
+      },
+      {
+        "id": "loop-w1-02",
+        "title": "Morning routine of a roaster",
+        "platform": [
+          "instagram"
+        ],
+        "hook": "5am. The roaster's already awake.",
+        "filmingDirection": "POV style, opening the shop.",
+        "caption": "This is what it takes for your 8am cup to exist.",
+        "dueToFilm": "2026-08-12",
+        "dueToEdit": null,
+        "postDate": null,
+        "status": "to_film",
+        "note": null,
+        "assignedEditor": null,
+        "editorBrief": {
+          "storyBeats": null,
+          "mustKeep": null,
+          "captionsStyle": null,
+          "musicVibe": null,
+          "ctaOverlay": null,
+          "platformSpecs": null
+        }
+      },
+      {
+        "id": "loop-w2-01",
+        "title": "Taste test: light vs dark roast",
+        "platform": [
+          "tiktok"
+        ],
+        "hook": "Most people are wrong about which one's stronger.",
+        "filmingDirection": "Side by side cups, quick cuts.",
+        "caption": "Light or dark \u2014 which one do you actually reach for?",
+        "dueToFilm": "2026-08-14",
+        "dueToEdit": null,
+        "postDate": null,
+        "status": "filmed",
+        "note": null,
+        "assignedEditor": null,
+        "editorBrief": {
+          "storyBeats": null,
+          "mustKeep": null,
+          "captionsStyle": null,
+          "musicVibe": null,
+          "ctaOverlay": null,
+          "platformSpecs": null
+        }
+      },
+      {
+        "id": "loop-w2-02",
+        "title": "The bag redesign story",
+        "platform": [
+          "instagram",
+          "tiktok"
+        ],
+        "hook": "We almost didn't change the bag. Here's why we did.",
+        "filmingDirection": "Talking head + product shots.",
+        "caption": "New look, same coffee. Here's the story behind the redesign.",
+        "dueToFilm": "2026-08-15",
+        "dueToEdit": null,
+        "postDate": null,
+        "status": "ready_to_edit",
+        "note": null,
+        "assignedEditor": null,
+        "editorBrief": {
+          "storyBeats": null,
+          "mustKeep": null,
+          "captionsStyle": null,
+          "musicVibe": null,
+          "ctaOverlay": null,
+          "platformSpecs": null
+        }
+      },
+      {
+        "id": "loop-w2-03",
+        "title": "Behind the counter on a Saturday rush",
+        "platform": [
+          "instagram"
+        ],
+        "hook": "This is what 40 orders in 20 minutes looks like.",
+        "filmingDirection": "Fast handheld, real rush if possible.",
+        "caption": "Saturday mornings hit different behind the bar.",
+        "dueToFilm": "2026-08-16",
+        "dueToEdit": "2026-08-25",
+        "postDate": "2026-09-01",
+        "status": "with_editor",
+        "note": null,
+        "assignedEditor": "Jordan",
+        "editorBrief": {
+          "storyBeats": "Open on the rush already in motion, no intro \u2014 cut to the calm after close for contrast.",
+          "mustKeep": "The line out the door shot at 0:04.",
+          "captionsStyle": "Burned-in captions, bold, bottom third.",
+          "musicVibe": "Upbeat but not chaotic \u2014 energetic coffee-shop indie, not EDM.",
+          "ctaOverlay": "Come see the rush yourself \u2014 Saturdays, 8-10am.",
+          "platformSpecs": "9:16, under 30s, safe zone clear of bottom nav for Reels/TikTok."
+        },
+        "overview": "A fast-paced look at what a Saturday rush actually looks like behind the counter \u2014 for the customers who only ever see the front.",
+        "body": "No dialogue \u2014 pure motion. Quick cuts: espresso pulls, oat milk steaming, handoff, next order. End on the empty bar after close, one exhale."
+      },
+      {
+        "id": "loop-w2-04",
+        "title": "Farmer relationship story",
+        "platform": [
+          "instagram",
+          "tiktok"
+        ],
+        "hook": "We've bought from the same farm for 6 years.",
+        "filmingDirection": "Voiceover over sourcing photos, talking head intro.",
+        "caption": "Six years, one farm, real relationships. This is where it starts.",
+        "dueToFilm": "2026-08-17",
+        "dueToEdit": "2026-08-26",
+        "postDate": "2026-09-02",
+        "status": "with_editor",
+        "note": "Trim the intro -- too slow before the hook lands.",
+        "assignedEditor": "Jordan",
+        "editorBrief": {
+          "storyBeats": "Talking head intro (10s) -> photo montage w/ voiceover -> back to talking head for CTA.",
+          "mustKeep": "The line \"they treat this farm like family\" \u2014 verbatim, don't trim.",
+          "captionsStyle": "Burned-in captions, bold, bottom third.",
+          "musicVibe": "Warm, acoustic, understated \u2014 this one's a story, not a hook reel.",
+          "ctaOverlay": "Read the full story \u2014 link in bio.",
+          "platformSpecs": "9:16, under 60s."
+        }
+      },
+      {
+        "id": "loop-w1-03",
+        "title": "How to actually store your beans",
+        "platform": [
+          "tiktok"
+        ],
+        "hook": "You're probably storing your coffee wrong.",
+        "filmingDirection": "Quick tips, on camera.",
+        "caption": "Save this before your next bag goes stale.",
+        "dueToFilm": "2026-08-08",
+        "dueToEdit": "2026-08-15",
+        "postDate": "2026-08-22",
+        "status": "client_review",
+        "note": null,
+        "assignedEditor": "Sam",
+        "editorBrief": {
+          "storyBeats": "3 quick tips, on-screen numbers 1-2-3.",
+          "mustKeep": "The airtight-container tip has to be tip #1.",
+          "captionsStyle": "Numbered on-screen text, punchy.",
+          "musicVibe": "Fast, playful, tip-reel energy.",
+          "ctaOverlay": "Save this for later.",
+          "platformSpecs": "9:16, under 20s."
+        }
+      },
+      {
+        "id": "loop-w1-05",
+        "title": "Latte art fails compilation",
+        "platform": [
+          "instagram",
+          "tiktok"
+        ],
+        "hook": "Two years of latte art. It did not start well.",
+        "filmingDirection": "Compilation of practice attempts, most recent last.",
+        "caption": "Nobody starts good. Here's the proof.",
+        "dueToFilm": "2026-08-06",
+        "dueToEdit": "2026-08-13",
+        "postDate": "2026-08-20",
+        "status": "ready_to_post",
+        "note": null,
+        "assignedEditor": "Sam",
+        "editorBrief": {
+          "storyBeats": "Worst attempts first, building to the best \u2014 comedic pacing.",
+          "mustKeep": "The one where it turns into a blob at 0:08 \u2014 funniest clip.",
+          "captionsStyle": "Minimal, let the visuals carry it.",
+          "musicVibe": "Comedic timing cues, upbeat.",
+          "ctaOverlay": "Follow for the next two years of practice.",
+          "platformSpecs": "9:16, under 30s."
+        }
+      },
+      {
+        "id": "loop-w1-04",
+        "title": "First-time customer reactions",
+        "platform": [
+          "instagram"
+        ],
+        "hook": "We handed a stranger our new blend, unlabeled.",
+        "filmingDirection": "Street interview style.",
+        "caption": "Blind taste test, zero hints. Their reactions were priceless.",
+        "dueToFilm": "2026-08-05",
+        "dueToEdit": "2026-08-07",
+        "postDate": "2026-08-14",
+        "status": "posted",
+        "note": null,
+        "assignedEditor": "Sam",
+        "editorBrief": {
+          "storyBeats": "Reaction shots first, reveal of the blend name last.",
+          "mustKeep": null,
+          "captionsStyle": "Burned-in captions.",
+          "musicVibe": "Light, curious build.",
+          "ctaOverlay": "Try it yourself \u2014 in store now.",
+          "platformSpecs": "9:16, under 45s."
+        }
+      }
+    ],
+    "pendingConcepts": [
+      {
+        "id": "loop-cyc2-01",
+        "title": "What 'single origin' actually means",
+        "cycle": "clients/test-loop-coffee/concepts/cycle-2.md",
+        "hook": "Everyone says single origin. Almost nobody explains it.",
+        "identity": "For the customer who nods along at menu terms without really knowing what they mean.",
+        "drive": "Comment 'ORIGIN' for the guide.",
+        "status": "pending_approval"
+      },
+      {
+        "id": "loop-cyc2-02",
+        "title": "Why we don't do flavored syrups",
+        "cycle": "clients/test-loop-coffee/concepts/cycle-2.md",
+        "hook": "We got asked for vanilla syrup again today. Here's our answer.",
+        "identity": "For the purist customer who already agrees but wants to hear it said out loud.",
+        "drive": "Visit the shop and ask us why.",
+        "status": "pending_approval"
+      }
+    ],
+    "competitors": [
+      {
+        "name": "Roast & Co",
+        "tag": "direct",
+        "platforms": [
+          "instagram",
+          "tiktok"
+        ],
+        "followers": 41000,
+        "engagementRate": 4.2,
+        "postsPerWeek": 5.1,
+        "growth30d": 2.1
+      },
+      {
+        "name": "Third Wave Supply",
+        "tag": "indirect",
+        "platforms": [
+          "instagram"
+        ],
+        "followers": 118000,
+        "engagementRate": 2.8,
+        "postsPerWeek": 3.4,
+        "growth30d": 0.6
+      },
+      {
+        "name": "Blue Bottle",
+        "tag": "aspirational",
+        "platforms": [
+          "instagram",
+          "tiktok",
+          "facebook"
+        ],
+        "followers": 890000,
+        "engagementRate": 1.9,
+        "postsPerWeek": 6.2,
+        "growth30d": 1.1
+      },
+      {
+        "name": "Corner Grind",
+        "tag": "direct",
+        "platforms": [
+          "instagram"
+        ],
+        "followers": 8200,
+        "engagementRate": 6.7,
+        "postsPerWeek": 2.3,
+        "growth30d": 5.4
+      }
+    ],
+    "analytics": [
+      {
+        "date": "2026-08-01",
+        "platform": "instagram",
+        "impressions": 18200,
+        "followers": 12400,
+        "engagementRate": 3.1
+      },
+      {
+        "date": "2026-08-08",
+        "platform": "instagram",
+        "impressions": 21100,
+        "followers": 12650,
+        "engagementRate": 3.4
+      },
+      {
+        "date": "2026-08-15",
+        "platform": "instagram",
+        "impressions": 26400,
+        "followers": 13020,
+        "engagementRate": 3.6
+      },
+      {
+        "date": "2026-08-01",
+        "platform": "tiktok",
+        "impressions": 9800,
+        "followers": 5100,
+        "engagementRate": 5.2
+      },
+      {
+        "date": "2026-08-08",
+        "platform": "tiktok",
+        "impressions": 15200,
+        "followers": 5600,
+        "engagementRate": 5.9
+      },
+      {
+        "date": "2026-08-15",
+        "platform": "tiktok",
+        "impressions": 22300,
+        "followers": 6400,
+        "engagementRate": 6.4
+      }
+    ]
+  }
+];
+const RESOURCES = {
+  "filmingGuide": "https://docs.google.com/document/d/19HrzqRM6q3a_VLLpdpd1pEefb8g3Mwh6r9zLTH8plK4/edit",
+  "editorPlaybook": "https://docs.google.com/document/d/1ico1IBXVixVHJchfodzBZs6MnYLR2ZJNENZMTFbMMsw/edit"
+};
+const STORE_KEY = "fso_editor_overrides";
+
+function loadOverrides() { try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); } catch (e) { return {}; } }
+function saveOverrides(o) { try { localStorage.setItem(STORE_KEY, JSON.stringify(o)); } catch (e) {} }
+
+function effectiveVideo(client, video, overrides) {
+  const o = overrides[client.client + ":" + video.id];
+  return o ? Object.assign({}, video, { status: o.status }) : video;
+}
+function allAssignedVideos() {
+  const overrides = loadOverrides();
+  const out = [];
+  CLIENTS.forEach(client => (client.videos || []).forEach(v0 => {
+    if (v0.status !== "with_editor") return;
+    out.push({ client, video: effectiveVideo(client, v0, overrides) });
+  }));
+  return out;
+}
+
+let editorFilter = "All";
+function renderQueue() {
+  const all = allAssignedVideos();
+  const editors = ["All", ...Array.from(new Set(all.map(x => x.video.assignedEditor).filter(Boolean)))];
+  document.getElementById("editorChips").innerHTML = editors.map(e => `<div class="chip ${e === editorFilter ? "active" : ""}" data-e="${escapeHtml(e)}">${escapeHtml(e)}</div>`).join("");
+  document.querySelectorAll("#editorChips .chip").forEach(el => el.onclick = () => { editorFilter = el.dataset.e; renderQueue(); });
+
+  const overrides = loadOverrides();
+  const items = all.filter(x => x.video.status === "with_editor" && (editorFilter === "All" || x.video.assignedEditor === editorFilter));
+  const list = document.getElementById("queueList");
+  if (!items.length) { list.innerHTML = '<div class="empty">Nothing assigned right now.</div>'; return; }
+
+  list.innerHTML = "";
+  items.forEach(({ client, video }) => {
+    const eb = video.editorBrief || {};
+    const f = client.driveFolders || {};
+    const overdue = video.dueToEdit && video.dueToEdit < todayISO();
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="row" style="border:none;padding:0 0 10px">
+        <div class="left"><b class="video-card" style="display:inline-block" data-open>${escapeHtml(video.title||video.id)}</b>
+        <div class="meta">${escapeHtml(client.displayName)} · ${(video.platform||[]).join(" · ")}${video.assignedEditor ? " · " + escapeHtml(video.assignedEditor) : ""}</div></div>
+        <div style="display:flex;gap:6px;align-items:center">
+          ${video.note ? `<span class="badge" style="background:rgba(239,68,68,0.15);color:var(--red)">🔄 Revision requested</span>` : ""}
+          ${video.dueToEdit ? `<span class="badge" style="background:${overdue ? 'rgba(239,68,68,0.15)' : 'var(--card2)'};color:${overdue ? 'var(--red)' : 'var(--sub)'}">${overdue ? "Overdue — " : "Due "}${escapeHtml(video.dueToEdit)}</span>` : ""}
+        </div>
+      </div>
+      ${video.note ? `<div style="margin:0 0 12px;padding:10px 12px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:8px;font-size:0.88rem"><b style="color:var(--red)">What needs to change: </b>${escapeHtml(video.note)}</div>` : ""}
+      ${video.overview ? `<div style="margin:0 0 10px;color:var(--sub);font-size:0.9rem">${escapeHtml(video.overview)}</div>` : ""}
+      <div class="grid-2" style="margin-top:6px">
+        <div>
+          ${eb.storyBeats ? fieldBlock("Story beats", eb.storyBeats) : ""}
+          ${eb.mustKeep ? fieldBlock("Must keep", eb.mustKeep) : ""}
+          ${eb.captionsStyle ? fieldBlock("Captions", eb.captionsStyle) : ""}
+        </div>
+        <div>
+          ${eb.musicVibe ? fieldBlock("Music / pacing vibe", eb.musicVibe) : ""}
+          ${eb.ctaOverlay ? fieldBlock("CTA overlay", eb.ctaOverlay) : ""}
+          ${eb.platformSpecs ? fieldBlock("Platform specs", eb.platformSpecs) : ""}
+        </div>
+      </div>
+      <div class="actions" style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+        ${f.footageUploads ? `<a class="btn" href="${f.footageUploads}" target="_blank" rel="noopener">📁 Footage (client-uploaded)</a>` : ""}
+        ${f.finalEdits ? `<a class="btn" href="${f.finalEdits}" target="_blank" rel="noopener">⬆️ Deliver here</a>` : ""}
+        ${f.brandVoice ? `<a class="btn" href="${f.brandVoice}" target="_blank" rel="noopener">🎙️ Brand voice</a>` : ""}
+        <button class="primary" data-mark="${client.client}:${video.id}">Mark delivered</button>
+      </div>
+    `;
+    card.querySelector("[data-mark]").onclick = () => markDelivered(client.client, video.id);
+    card.querySelector("[data-open]").onclick = () => openEditorVideoModal(client.client, video.id);
+    list.appendChild(card);
+  });
+}
+function fieldBlock(label, value) {
+  return `<div style="margin:0 0 10px"><b style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">${escapeHtml(label)}</b><div style="font-size:0.9rem;line-height:1.5">${escapeHtml(value)}</div></div>`;
+}
+
+// Same shared modal as the client/operator dashboards.
+function openEditorVideoModal(clientSlug, videoId) {
+  const client = CLIENTS.find(c => c.client === clientSlug);
+  if (!client) return;
+  const overrides = loadOverrides();
+  const video0 = (client.videos || []).find(v => v.id === videoId);
+  if (!video0) return;
+  const video = effectiveVideo(client, video0, overrides);
+  const actionsHtml = video.status === "with_editor"
+    ? `<button class="primary" onclick="markDelivered('${clientSlug}','${videoId}');closeVideoModal()">Mark delivered</button>`
+    : "";
+  openVideoModal(client, video, { actionsHtml, linkKeys: ["footageUploads", "finalEdits", "brandVoice"] });
+}
+
+let calEditorFilter = "All";
+function renderCalendar() {
+  const all = allAssignedVideos();
+  const editors = ["All", ...Array.from(new Set(all.map(x => x.video.assignedEditor).filter(Boolean)))];
+  document.getElementById("calEditorChips").innerHTML = editors.map(e => `<div class="chip ${e === calEditorFilter ? "active" : ""}" data-e="${escapeHtml(e)}">${escapeHtml(e)}</div>`).join("");
+  document.querySelectorAll("#calEditorChips .chip").forEach(el => el.onclick = () => { calEditorFilter = el.dataset.e; renderCalendar(); });
+
+  const items = all.filter(x => calEditorFilter === "All" || x.video.assignedEditor === calEditorFilter);
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startDow = first.getDay();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const byDay = {};
+  items.forEach(x => { if (x.video.dueToEdit) (byDay[x.video.dueToEdit] = byDay[x.video.dueToEdit] || []).push(x); });
+
+  let html = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => `<div class="cal-dow">${d}</div>`).join("");
+  for (let i = 0; i < startDow; i++) html += `<div></div>`;
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = new Date(now.getFullYear(), now.getMonth(), day).toISOString().slice(0,10);
+    const dayItems = byDay[dateStr] || [];
+    const isToday = dateStr === todayISO();
+    html += `<div class="cal-cell ${isToday ? "today" : ""}"><div class="daynum">${day}</div>` +
+      dayItems.map(x => `<div class="cal-chip video-card" style="background:color-mix(in srgb, var(--status-${x.video.status}) 20%, transparent); color:var(--status-${x.video.status})" onclick="openEditorVideoModal('${x.client.client}','${x.video.id}')">${x.video.note ? "🔄 " : ""}${escapeHtml(x.client.displayName)}: ${escapeHtml(x.video.title||x.video.id)}</div>`).join("") +
+      `</div>`;
+  }
+  document.getElementById("calGrid").innerHTML = html;
+}
+
+// Live push: if this client has their own live portal, opening it with the
+// action already spelled out (buildHashState, shell.js) publishes the
+// status change there the instant it loads — the operator sees it on that
+// same client's portal without waiting for a pasted status report. This
+// dashboard can't publish into a different, separate Artifact itself; see
+// dashboards/template/README.md. Always ALSO keeps the local override
+// below, so "Delivered" and the status report still work exactly as
+// before for clients with no portalUrl yet.
+function quickLink(client, params) {
+  if (!client || !client.portalUrl) return null;
+  const base = client.portalUrl.split("#")[0].split("?")[0];
+  return base + buildHashState(Object.assign({ operator: "1" }, params));
+}
+
+function markDelivered(clientSlug, videoId) {
+  const overrides = loadOverrides();
+  overrides[clientSlug + ":" + videoId] = { status: "in_review", changedAt: new Date().toISOString() };
+  saveOverrides(overrides);
+  renderQueue(); renderCalendar(); renderDelivered();
+
+  const client = CLIENTS.find(c => c.client === clientSlug);
+  const url = quickLink(client, { quickDeliver: videoId });
+  if (url) window.open(url, "_blank");
+}
+
+function renderDelivered() {
+  const overrides = loadOverrides();
+  const items = [];
+  CLIENTS.forEach(client => (client.videos || []).forEach(v0 => {
+    const key = client.client + ":" + v0.id;
+    if (overrides[key] && overrides[key].status === "in_review" && v0.status !== "in_review") items.push({ client, video: v0 });
+  }));
+  const list = document.getElementById("deliveredList");
+  list.innerHTML = items.length ? items.map(x => `
+    <div class="row"><div class="left"><b>${escapeHtml(x.video.title||x.video.id)}</b><div class="meta">${escapeHtml(x.client.displayName)}</div></div>
+    <span class="badge" style="background:rgba(129,140,248,0.15);color:#818cf8">Marked delivered</span></div>
+  `).join("") : '<div class="empty">Nothing marked delivered yet this session.</div>';
+}
+
+document.getElementById("reportBtn").onclick = () => {
+  const overrides = loadOverrides();
+  const byClient = {};
+  Object.keys(overrides).forEach(key => {
+    const [clientSlug, videoId] = key.split(":");
+    (byClient[clientSlug] = byClient[clientSlug] || []).push(videoId + " | " + overrides[key].status.toUpperCase());
+  });
+  const now = new Date().toISOString().replace("T", " ").slice(0, 16);
+  const reports = Object.entries(byClient).map(([clientSlug, lines]) =>
+    ["FULLY SOCIAL OS STATUS REPORT", "Client: " + clientSlug, "Generated: " + now, "---", lines.join("\n")].join("\n")
+  );
+  const box = document.getElementById("reportBox"), ta = document.getElementById("reportText");
+  ta.value = reports.length ? reports.join("\n\n") : "(nothing marked delivered yet)";
+  box.style.display = "block"; ta.focus(); ta.select();
+};
+
+function renderDocs() {
+  const docs = [
+    { label: "Editor Playbook", desc: "General overview: what to do, how to do it, delivery expectations.", url: RESOURCES.editorPlaybook },
+  ].filter(d => d.url);
+  document.getElementById("docsList").innerHTML = docs.length ? docs.map(d => `
+    <div class="row"><div class="left"><b>${escapeHtml(d.label)}</b><div class="meta">${escapeHtml(d.desc)}</div></div>
+    <a class="btn primary" href="${d.url}" target="_blank" rel="noopener">Open</a></div>
+  `).join("") : '<div class="empty">Nothing linked yet.</div>';
+}
+
+renderQueue(); renderCalendar(); renderDelivered(); renderDocs();
+initRouter("queue");
+</script>
+</body>
+</html>

@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fully Social OS — Editor Queue</title>
+<style>/*__SHELL_CSS__*/</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="brand"><span class="dot"></span> Fully Social OS</div>
+  <div class="nav-item active" data-view="queue"><span class="ic">🎞️</span> To Edit</div>
+  <div class="nav-item" data-view="calendar"><span class="ic">📅</span> Calendar</div>
+  <div class="nav-item" data-view="delivered"><span class="ic">📤</span> Delivered</div>
+  <div class="nav-item" data-view="docs"><span class="ic">📄</span> Important Documents</div>
+  <div class="nav-section-label">Sync</div>
+  <div class="nav-item" data-view="report"><span class="ic">📋</span> Send status report</div>
+</nav>
+
+<main class="main">
+
+  <section class="view active" id="view-queue">
+    <div class="page-head"><h1>To Edit</h1><p>Every video currently assigned, across every client. A video isn't done when you deliver it — it's done when its tag says "Ready to post." If it comes back here with a 🔄, the owner or the client asked for a change before that can happen.</p></div>
+    <div class="chip-row" id="editorChips"></div>
+    <div id="queueList"></div>
+  </section>
+
+  <section class="view" id="view-calendar">
+    <div class="page-head"><h1>Calendar</h1><p>Due-to-edit dates for everything currently assigned.</p></div>
+    <div class="chip-row" id="calEditorChips"></div>
+    <div class="card"><div class="cal-grid" id="calGrid"></div></div>
+  </section>
+
+  <section class="view" id="view-delivered">
+    <div class="page-head"><h1>Delivered</h1><p>Videos you've marked delivered this session — for your own reference until the operator applies the report.</p></div>
+    <div id="deliveredList"></div>
+  </section>
+
+  <section class="view" id="view-docs">
+    <div class="page-head"><h1>Important Documents</h1><p>General guidance for editing on this account — not client-specific, that lives on each video's card.</p></div>
+    <div class="card"><div id="docsList"></div></div>
+  </section>
+
+  <section class="view" id="view-report">
+    <div class="page-head"><h1>Send status report</h1><p>Generate a report for everything you've marked delivered, then send it to the operator to apply.</p></div>
+    <button class="primary" id="reportBtn" style="margin-bottom:14px">Generate status report</button>
+    <div class="card" id="reportBox" style="display:none">
+      <textarea id="reportText" rows="8" readonly></textarea>
+      <div style="color:var(--sub);font-size:0.85rem;margin-top:8px">Copy this and send it to whoever runs the operator dashboard — they'll paste it into "Apply status report."</div>
+    </div>
+  </section>
+
+</main>
+
+<script>/*__SHELL_JS__*/</script>
+<script>
+const CLIENTS = /*__CLIENTS_JSON__*/[];
+const RESOURCES = /*__RESOURCES_JSON__*/{};
+const STORE_KEY = "fso_editor_overrides";
+
+function loadOverrides() { try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); } catch (e) { return {}; } }
+function saveOverrides(o) { try { localStorage.setItem(STORE_KEY, JSON.stringify(o)); } catch (e) {} }
+
+function effectiveVideo(client, video, overrides) {
+  const o = overrides[client.client + ":" + video.id];
+  return o ? Object.assign({}, video, { status: o.status }) : video;
+}
+function allAssignedVideos() {
+  const overrides = loadOverrides();
+  const out = [];
+  CLIENTS.forEach(client => (client.videos || []).forEach(v0 => {
+    if (v0.status !== "with_editor") return;
+    out.push({ client, video: effectiveVideo(client, v0, overrides) });
+  }));
+  return out;
+}
+
+let editorFilter = "All";
+function renderQueue() {
+  const all = allAssignedVideos();
+  const editors = ["All", ...Array.from(new Set(all.map(x => x.video.assignedEditor).filter(Boolean)))];
+  document.getElementById("editorChips").innerHTML = editors.map(e => `<div class="chip ${e === editorFilter ? "active" : ""}" data-e="${escapeHtml(e)}">${escapeHtml(e)}</div>`).join("");
+  document.querySelectorAll("#editorChips .chip").forEach(el => el.onclick = () => { editorFilter = el.dataset.e; renderQueue(); });
+
+  const overrides = loadOverrides();
+  const items = all.filter(x => x.video.status === "with_editor" && (editorFilter === "All" || x.video.assignedEditor === editorFilter));
+  const list = document.getElementById("queueList");
+  if (!items.length) { list.innerHTML = '<div class="empty">Nothing assigned right now.</div>'; return; }
+
+  list.innerHTML = "";
+  items.forEach(({ client, video }) => {
+    const eb = video.editorBrief || {};
+    const f = client.driveFolders || {};
+    const overdue = video.dueToEdit && video.dueToEdit < todayISO();
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="row" style="border:none;padding:0 0 10px">
+        <div class="left"><b class="video-card" style="display:inline-block" data-open>${escapeHtml(video.title||video.id)}</b>
+        <div class="meta">${escapeHtml(client.displayName)} · ${(video.platform||[]).join(" · ")}${video.assignedEditor ? " · " + escapeHtml(video.assignedEditor) : ""}</div></div>
+        <div style="display:flex;gap:6px;align-items:center">
+          ${video.note ? `<span class="badge" style="background:rgba(239,68,68,0.15);color:var(--red)">🔄 Revision requested</span>` : ""}
+          ${video.dueToEdit ? `<span class="badge" style="background:${overdue ? 'rgba(239,68,68,0.15)' : 'var(--card2)'};color:${overdue ? 'var(--red)' : 'var(--sub)'}">${overdue ? "Overdue — " : "Due "}${escapeHtml(video.dueToEdit)}</span>` : ""}
+        </div>
+      </div>
+      ${video.note ? `<div style="margin:0 0 12px;padding:10px 12px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:8px;font-size:0.88rem"><b style="color:var(--red)">What needs to change: </b>${escapeHtml(video.note)}</div>` : ""}
+      ${video.overview ? `<div style="margin:0 0 10px;color:var(--sub);font-size:0.9rem">${escapeHtml(video.overview)}</div>` : ""}
+      <div class="grid-2" style="margin-top:6px">
+        <div>
+          ${eb.storyBeats ? fieldBlock("Story beats", eb.storyBeats) : ""}
+          ${eb.mustKeep ? fieldBlock("Must keep", eb.mustKeep) : ""}
+          ${eb.captionsStyle ? fieldBlock("Captions", eb.captionsStyle) : ""}
+        </div>
+        <div>
+          ${eb.musicVibe ? fieldBlock("Music / pacing vibe", eb.musicVibe) : ""}
+          ${eb.ctaOverlay ? fieldBlock("CTA overlay", eb.ctaOverlay) : ""}
+          ${eb.platformSpecs ? fieldBlock("Platform specs", eb.platformSpecs) : ""}
+        </div>
+      </div>
+      <div class="actions" style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+        ${f.footageUploads ? `<a class="btn" href="${f.footageUploads}" target="_blank" rel="noopener">📁 Footage (client-uploaded)</a>` : ""}
+        ${f.finalEdits ? `<a class="btn" href="${f.finalEdits}" target="_blank" rel="noopener">⬆️ Deliver here</a>` : ""}
+        ${f.brandVoice ? `<a class="btn" href="${f.brandVoice}" target="_blank" rel="noopener">🎙️ Brand voice</a>` : ""}
+        <button class="primary" data-mark="${client.client}:${video.id}">Mark delivered</button>
+      </div>
+    `;
+    card.querySelector("[data-mark]").onclick = () => markDelivered(client.client, video.id);
+    card.querySelector("[data-open]").onclick = () => openEditorVideoModal(client.client, video.id);
+    list.appendChild(card);
+  });
+}
+function fieldBlock(label, value) {
+  return `<div style="margin:0 0 10px"><b style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">${escapeHtml(label)}</b><div style="font-size:0.9rem;line-height:1.5">${escapeHtml(value)}</div></div>`;
+}
+
+// Same shared modal as the client/operator dashboards.
+function openEditorVideoModal(clientSlug, videoId) {
+  const client = CLIENTS.find(c => c.client === clientSlug);
+  if (!client) return;
+  const overrides = loadOverrides();
+  const video0 = (client.videos || []).find(v => v.id === videoId);
+  if (!video0) return;
+  const video = effectiveVideo(client, video0, overrides);
+  const actionsHtml = video.status === "with_editor"
+    ? `<button class="primary" onclick="markDelivered('${clientSlug}','${videoId}');closeVideoModal()">Mark delivered</button>`
+    : "";
+  openVideoModal(client, video, { actionsHtml, linkKeys: ["footageUploads", "finalEdits", "brandVoice"] });
+}
+
+let calEditorFilter = "All";
+function renderCalendar() {
+  const all = allAssignedVideos();
+  const editors = ["All", ...Array.from(new Set(all.map(x => x.video.assignedEditor).filter(Boolean)))];
+  document.getElementById("calEditorChips").innerHTML = editors.map(e => `<div class="chip ${e === calEditorFilter ? "active" : ""}" data-e="${escapeHtml(e)}">${escapeHtml(e)}</div>`).join("");
+  document.querySelectorAll("#calEditorChips .chip").forEach(el => el.onclick = () => { calEditorFilter = el.dataset.e; renderCalendar(); });
+
+  const items = all.filter(x => calEditorFilter === "All" || x.video.assignedEditor === calEditorFilter);
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startDow = first.getDay();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const byDay = {};
+  items.forEach(x => { if (x.video.dueToEdit) (byDay[x.video.dueToEdit] = byDay[x.video.dueToEdit] || []).push(x); });
+
+  let html = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => `<div class="cal-dow">${d}</div>`).join("");
+  for (let i = 0; i < startDow; i++) html += `<div></div>`;
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = new Date(now.getFullYear(), now.getMonth(), day).toISOString().slice(0,10);
+    const dayItems = byDay[dateStr] || [];
+    const isToday = dateStr === todayISO();
+    html += `<div class="cal-cell ${isToday ? "today" : ""}"><div class="daynum">${day}</div>` +
+      dayItems.map(x => `<div class="cal-chip video-card" style="background:color-mix(in srgb, var(--status-${x.video.status}) 20%, transparent); color:var(--status-${x.video.status})" onclick="openEditorVideoModal('${x.client.client}','${x.video.id}')">${x.video.note ? "🔄 " : ""}${escapeHtml(x.client.displayName)}: ${escapeHtml(x.video.title||x.video.id)}</div>`).join("") +
+      `</div>`;
+  }
+  document.getElementById("calGrid").innerHTML = html;
+}
+
+// Live push: if this client has their own live portal, opening it with the
+// action already spelled out (buildHashState, shell.js) publishes the
+// status change there the instant it loads — the operator sees it on that
+// same client's portal without waiting for a pasted status report. This
+// dashboard can't publish into a different, separate Artifact itself; see
+// dashboards/template/README.md. Always ALSO keeps the local override
+// below, so "Delivered" and the status report still work exactly as
+// before for clients with no portalUrl yet.
+function quickLink(client, params) {
+  if (!client || !client.portalUrl) return null;
+  const base = client.portalUrl.split("#")[0].split("?")[0];
+  return base + buildHashState(Object.assign({ operator: "1" }, params));
+}
+
+function markDelivered(clientSlug, videoId) {
+  const overrides = loadOverrides();
+  overrides[clientSlug + ":" + videoId] = { status: "in_review", changedAt: new Date().toISOString() };
+  saveOverrides(overrides);
+  renderQueue(); renderCalendar(); renderDelivered();
+
+  const client = CLIENTS.find(c => c.client === clientSlug);
+  const url = quickLink(client, { quickDeliver: videoId });
+  if (url) window.open(url, "_blank");
+}
+
+function renderDelivered() {
+  const overrides = loadOverrides();
+  const items = [];
+  CLIENTS.forEach(client => (client.videos || []).forEach(v0 => {
+    const key = client.client + ":" + v0.id;
+    if (overrides[key] && overrides[key].status === "in_review" && v0.status !== "in_review") items.push({ client, video: v0 });
+  }));
+  const list = document.getElementById("deliveredList");
+  list.innerHTML = items.length ? items.map(x => `
+    <div class="row"><div class="left"><b>${escapeHtml(x.video.title||x.video.id)}</b><div class="meta">${escapeHtml(x.client.displayName)}</div></div>
+    <span class="badge" style="background:rgba(129,140,248,0.15);color:#818cf8">Marked delivered</span></div>
+  `).join("") : '<div class="empty">Nothing marked delivered yet this session.</div>';
+}
+
+document.getElementById("reportBtn").onclick = () => {
+  const overrides = loadOverrides();
+  const byClient = {};
+  Object.keys(overrides).forEach(key => {
+    const [clientSlug, videoId] = key.split(":");
+    (byClient[clientSlug] = byClient[clientSlug] || []).push(videoId + " | " + overrides[key].status.toUpperCase());
+  });
+  const now = new Date().toISOString().replace("T", " ").slice(0, 16);
+  const reports = Object.entries(byClient).map(([clientSlug, lines]) =>
+    ["FULLY SOCIAL OS STATUS REPORT", "Client: " + clientSlug, "Generated: " + now, "---", lines.join("\n")].join("\n")
+  );
+  const box = document.getElementById("reportBox"), ta = document.getElementById("reportText");
+  ta.value = reports.length ? reports.join("\n\n") : "(nothing marked delivered yet)";
+  box.style.display = "block"; ta.focus(); ta.select();
+};
+
+function renderDocs() {
+  const docs = [
+    { label: "Editor Playbook", desc: "General overview: what to do, how to do it, delivery expectations.", url: RESOURCES.editorPlaybook },
+  ].filter(d => d.url);
+  document.getElementById("docsList").innerHTML = docs.length ? docs.map(d => `
+    <div class="row"><div class="left"><b>${escapeHtml(d.label)}</b><div class="meta">${escapeHtml(d.desc)}</div></div>
+    <a class="btn primary" href="${d.url}" target="_blank" rel="noopener">Open</a></div>
+  `).join("") : '<div class="empty">Nothing linked yet.</div>';
+}
+
+renderQueue(); renderCalendar(); renderDelivered(); renderDocs();
+initRouter("queue");
+</script>
+</body>
+</html>

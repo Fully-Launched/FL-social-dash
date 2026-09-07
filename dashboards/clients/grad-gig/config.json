@@ -1,0 +1,20 @@
+{
+  "client": "grad-gig",
+  "displayName": "Grad Gig",
+  "clientSystem": "self-serve",
+  "planWindow": { "start": "2026-08-24", "end": "2026-09-18" },
+  "driveFolders": {
+    "root": "https://drive.google.com/drive/folders/1nOD5dj0UU_0h715kvmHik3j4FJoXYTU2",
+    "footageUploads": "https://drive.google.com/drive/folders/1I4TOm8LQJoFXIiJXFQI32vXQI-wgkmdV",
+    "finalEdits": "https://drive.google.com/drive/folders/15vaYJEGnbtaEn5OLsX2bA1HAPbbDPlat",
+    "brandVoice": "https://drive.google.com/drive/folders/1sHIpielrUZdKaSm9xzoJqVI4r3NxM3nf",
+    "hooks": "https://drive.google.com/drive/folders/1fpsX1YY_tGGTnamnuP2CwYTiTGyIrcMg",
+    "assets": "https://drive.google.com/drive/folders/1GMPgjZpWdYs2OqU36jvDIZ1d4uoCnFq0",
+    "customerData": "https://drive.google.com/drive/folders/1IVpu7d3KAJSPLPXT6ey-Zxybt5rHns5q",
+    "contentIdeas": "https://drive.google.com/drive/folders/1RBPUmZOg7DbZiemX50RDhFgLyek8Gr7X"
+  },
+  "videos": [],
+  "pendingConcepts": [],
+  "competitors": [],
+  "analytics": []
+}

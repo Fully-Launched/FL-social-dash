@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>__DISPLAY_NAME__</title>
+<style>/*__SHELL_CSS__*/</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="brand"><span class="dot"></span> __DISPLAY_NAME__</div>
+  <div class="sync-badge" id="syncBadge"></div>
+  <div class="sync-badge" id="operatorBadge" style="display:none">🔧 Operator mode — <a href="#" id="exitOperator" style="color:inherit;text-decoration:underline">exit</a></div>
+  <div class="nav-item active" data-view="home"><span class="ic">🏠</span> Dashboard</div>
+  <div class="nav-item" data-view="videos"><span class="ic">🎬</span> My Videos</div>
+  <div class="nav-item" data-view="calendar"><span class="ic">📅</span> Content Calendar</div>
+  <div class="nav-item" data-view="analytics"><span class="ic">📈</span> Analytics</div>
+  <div class="nav-item" data-view="news"><span class="ic">📰</span> News</div>
+  <div class="nav-item" data-view="docs"><span class="ic">📄</span> Important Documents</div>
+</nav>
+
+<main class="main">
+
+  <section class="view active" id="view-home">
+    <div class="page-head"><h1>Welcome back</h1><p>Plan window: __PLAN_START__ – __PLAN_END__</p></div>
+    <div class="stat-grid" id="homeStats"></div>
+    <div class="card">
+      <h2>Footage folder</h2>
+      <p style="color:var(--sub);font-size:0.88rem;margin:0 0 12px">Drop finished footage here for each video below — this page never handles the files directly.</p>
+      <a class="btn primary" href="__FOOTAGE_FOLDER__" target="_blank" rel="noopener">📁 Open footage folder</a>
+    </div>
+  </section>
+
+  <section class="view" id="view-videos">
+    <div class="page-head"><h1>My Videos</h1><p id="videosSubhead"></p></div>
+    <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+      <button class="primary" id="reportBtn">Generate status report</button>
+      <button id="addVideoBtn" style="display:none">+ Add video</button>
+    </div>
+    <div class="report-box" id="reportBox" style="display:none">
+      <textarea id="reportText" rows="6" readonly></textarea>
+      <div style="color:var(--sub);font-size:0.85rem;margin-top:8px">Copy this and send it back — it updates the master dashboard.</div>
+    </div>
+    <div class="card" id="addVideoPanel" style="display:none;margin-bottom:18px"></div>
+
+    <div class="chip-row">
+      <div class="chip active" data-tab="film">To Film</div>
+      <div class="chip" data-tab="approve">Ready to Approve</div>
+    </div>
+
+    <div id="tabFilm">
+      <div id="groupConcepts">
+        <h2 style="font-size:1rem;margin:22px 0 10px">Concepts awaiting your approval</h2>
+        <div id="listConcepts"></div>
+      </div>
+      <div id="groupToFilm">
+        <h2 style="font-size:1rem;margin:22px 0 10px">To film</h2>
+        <div id="listToFilm"></div>
+      </div>
+      <h2 style="font-size:1rem;margin:22px 0 10px">In progress — with the editor, no action needed yet</h2>
+      <div id="listProgress"></div>
+    </div>
+
+    <div id="tabApprove" style="display:none">
+      <h2 style="font-size:1rem;margin:22px 0 10px">Ready for your final approval</h2>
+      <div id="listReview"></div>
+      <h2 style="font-size:1rem;margin:22px 0 10px">Approved / posted</h2>
+      <div id="listDone"></div>
+    </div>
+  </section>
+
+  <section class="view" id="view-calendar">
+    <div class="page-head"><h1>Content Calendar</h1><p>What's due when, this month.</p></div>
+    <div class="card"><div class="cal-grid" id="calGrid"></div></div>
+  </section>
+
+  <section class="view" id="view-analytics">
+    <div class="page-head"><h1>Analytics</h1><p>Updated periodically — not a live feed.</p></div>
+    <div class="stat-grid" id="anStats"></div>
+    <div class="card">
+      <h2>Followers over time</h2>
+      <div class="chart-wrap" id="anChart"></div>
+      <div class="chart-legend" id="anLegend"></div>
+    </div>
+  </section>
+
+  <section class="view" id="view-news">
+    <div class="page-head"><h1>News</h1><p>Worth knowing about in your niche — curated, not auto-pulled.</p></div>
+    <div class="chip-row" id="newsChips"></div>
+    <div class="card"><div id="newsList"></div></div>
+  </section>
+
+  <section class="view" id="view-docs">
+    <div class="page-head"><h1>Important Documents</h1><p>Everything that shapes your content, in one place — no need to dig through Drive.</p></div>
+    <div class="card"><div id="docsList"></div></div>
+  </section>
+
+</main>
+
+<script>/*__SHELL_JS__*/</script>
+<script>
+const CONFIG = /*__CONFIG_JSON__*/null;
+const NEWS = /*__NEWS_JSON__*/[];
+const RESOURCES = /*__RESOURCES_JSON__*/{};
+// The page's own source, verbatim, with CONFIG still unresolved — see
+// "Live sync" below. Publishing a change means re-injecting a new CONFIG
+// into this same template and handing the platform the whole document.
+const PAGE_SHELL = /*__PAGE_SHELL_JSON__*/"";
+const STORE_KEY = "fso_status_" + CONFIG.client;
+const EXTRA_KEY = "fso_extra_videos_" + CONFIG.client;
+const OPERATOR_KEY = "fso_operator_" + CONFIG.client;
+const IS_SELF_SERVE = CONFIG.clientSystem !== "concierge";
+const EDITABLE_FIELDS = ["hook", "caption", "filmingDirection"];
+
+// Captured once, before initRouter's first activate() call rewrites the
+// hash down to a bare view name — anything reading one-shot hash data
+// (operator flag, quick actions below) must use this snapshot, not
+// re-parse location.hash later. A claude.ai Artifact's wrapper does not
+// forward query-string params into the embedded document (confirmed by
+// testing) — only the hash survives — so this, not ?foo=bar, is the only
+// way a link can hand this page one-shot data.
+const INITIAL_HASH = parseHashParams();
+// Operator mode: everything the client can already do (approve, reject,
+// mark filmed) stays exactly as before, on the plain link. Opening this
+// same link with #?operator=1 once additionally unlocks full editing —
+// every field, plus adding brand-new videos — and remembers that in this
+// browser so it doesn't have to be in the URL every time. There's no real
+// auth here (same posture as the rest of this system); the client link
+// you actually hand out just never carries the flag.
+function checkOperatorMode() {
+  try {
+    const flag = INITIAL_HASH.params.get("operator");
+    if (flag === "1") { localStorage.setItem(OPERATOR_KEY, "1"); return true; }
+    if (flag === "0") { localStorage.removeItem(OPERATOR_KEY); return false; }
+    return localStorage.getItem(OPERATOR_KEY) === "1";
+  } catch (e) { return false; }
+}
+const IS_OPERATOR = checkOperatorMode();
+
+function loadOverrides() { try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); } catch (e) { return {}; } }
+function saveOverrides(o) { try { localStorage.setItem(STORE_KEY, JSON.stringify(o)); } catch (e) {} }
+function loadExtraVideos() { try { return JSON.parse(localStorage.getItem(EXTRA_KEY) || "[]"); } catch (e) { return []; } }
+function saveExtraVideos(arr) { try { localStorage.setItem(EXTRA_KEY, JSON.stringify(arr)); } catch (e) {} }
+// Every video, wherever it currently lives: published in CONFIG, or — only
+// when this device couldn't publish — a brand-new one still waiting in
+// this browser's own localStorage. Once a publish succeeds the new video
+// is in CONFIG for everyone and the local copy is cleared.
+function allVideos() { return CONFIG.videos.concat(loadExtraVideos()); }
+function effectiveStatus(video, overrides) { const o = overrides[video.id]; return o && o.status ? o.status : video.status; }
+function effectiveNote(video, overrides) { const o = overrides[video.id]; return o && o.note != null ? o.note : video.note; }
+function effectiveVideo(video, overrides) {
+  const o = overrides[video.id] || {};
+  const merged = Object.assign({}, video, { status: effectiveStatus(video, overrides), note: effectiveNote(video, overrides) });
+  EDITABLE_FIELDS.forEach(f => { if (o[f] != null) merged[f] = o[f]; });
+  return merged;
+}
+
+// --- Live sync -------------------------------------------------------
+// If this page is open as a claude.ai Artifact with write access, every
+// change below also republishes the whole document so every other open
+// view (the client's tab, Tait's tab) reloads to the same state — no
+// manual rebuild. If it isn't (opened locally, or this viewer is
+// read-only), changes still save via the localStorage override above,
+// same as before; they just stay on this one device until relayed.
+let syncMode = "checking"; // "live" | "local" | "readonly"
+
+async function getArtifactNS() {
+  try {
+    if (typeof window.claude === "undefined" || !window.claude.use) return null;
+    return await window.claude.use("artifact");
+  } catch (e) { return null; }
+}
+
+function buildFullHtml(config) {
+  // PAGE_SHELL still contains the literal, unresolved placeholder text —
+  // put back by build.py specifically so this replace keeps working.
+  // Built via concatenation, not as one literal, so build.py's own
+  // placeholder substitution doesn't also rewrite this line.
+  const marker = "/*__CONFIG_JSON__*/" + "null";
+  return PAGE_SHELL.replace(marker, JSON.stringify(config));
+}
+
+function setSyncBadge(mode) {
+  syncMode = mode;
+  const el = document.getElementById("syncBadge");
+  if (!el) return;
+  const map = {
+    checking: ["", ""],
+    live: ["sync-live", "🟢 Live — changes sync automatically"],
+    local: ["sync-local", "💾 Local only — this view can't publish, changes stay on this device"],
+    readonly: ["sync-local", "🔒 Read-only here — changes stay on this device until relayed"],
+  };
+  const [cls, label] = map[mode] || map.local;
+  el.className = "sync-badge " + cls;
+  el.textContent = label;
+}
+
+// One-time probe at load, just to show the badge — every actual commit()
+// call re-checks for itself rather than trusting this cached guess.
+getArtifactNS().then(ns => setSyncBadge(ns ? "live" : "local"));
+
+// The single path every state change goes through: apply locally first
+// (instant feedback, and the fallback if publishing isn't possible), then
+// best-effort publish the mutated result as the new canonical document.
+// `mutateFn` edits a draft copy of CONFIG for the real publish; `local`/
+// `clearLocal` are the matching localStorage-only fallback and its cleanup
+// once a publish actually lands.
+async function commitMutation(mutateFn, hooks) {
+  hooks = hooks || {};
+  if (hooks.local) hooks.local();
+
+  const artifact = await getArtifactNS();
+  if (!artifact) { setSyncBadge("local"); return; }
+  const draft = JSON.parse(JSON.stringify(CONFIG));
+  mutateFn(draft);
+  try {
+    await artifact.publish(buildFullHtml(draft));
+    // Publish succeeded — every open view (this one included) is about to
+    // reload to the new document, so the local-only copy is now redundant.
+    if (hooks.clearLocal) hooks.clearLocal();
+  } catch (e) {
+    if (e && (e.code === "not_writer" || e.code === "not_granted")) {
+      setSyncBadge("readonly");
+    } else if (e && e.code === "conflict") {
+      // Someone else published in between — the platform reloads this
+      // view to their version on its own; nothing more to do here.
+    } else {
+      console.warn("live publish failed", e);
+    }
+  }
+}
+
+function commit(id, patch) {
+  return commitMutation(
+    draft => { const v = draft.videos.find(x => x.id === id); if (v) Object.assign(v, patch); },
+    {
+      local: () => {
+        const o = loadOverrides();
+        o[id] = Object.assign({}, o[id], patch, { changedAt: new Date().toISOString() });
+        saveOverrides(o);
+        renderVideos(); renderHome(); renderCalendar();
+      },
+      clearLocal: () => { const o = loadOverrides(); delete o[id]; saveOverrides(o); },
+    }
+  );
+}
+
+// Operator-only: a brand-new video, added straight from this portal.
+function addVideo(fields) {
+  return commitMutation(
+    draft => { draft.videos.push(fields); },
+    {
+      local: () => {
+        const arr = loadExtraVideos(); arr.push(fields); saveExtraVideos(arr);
+        renderVideos(); renderHome(); renderCalendar();
+      },
+      clearLocal: () => { saveExtraVideos(loadExtraVideos().filter(v => v.id !== fields.id)); },
+    }
+  );
+}
+
+function renderHome() {
+  const overrides = loadOverrides();
+  const vids = allVideos().map(v => effectiveStatus(v, overrides));
+  const stats = [
+    { label: "Total videos", value: allVideos().length },
+    { label: "Waiting on you", value: vids.filter(s => ["concept_pending","to_film","client_review"].includes(s)).length },
+    { label: "In progress", value: vids.filter(s => ["filmed","ready_to_edit","with_editor","in_review"].includes(s)).length },
+    { label: "Posted", value: vids.filter(s => s === "posted").length },
+  ];
+  document.getElementById("homeStats").innerHTML = stats.map(s => `<div class="stat-card"><div class="label">${s.label}</div><div class="value">${s.value}</div></div>`).join("");
+}
+
+function videoCard(video0, status, overrides, opts) {
+  opts = opts || {};
+  const video = effectiveVideo(video0, overrides);
+  const card = document.createElement("div");
+  card.className = "card";
+  const platforms = (video.platform || []).join(" · ");
+  card.innerHTML = `
+    <div class="row" style="border:none;padding:0 0 10px">
+      <div class="left"><b class="video-card" style="display:inline-block" data-open="${escapeHtml(video.id)}">${escapeHtml(video.title || video.id)}</b>
+      <div class="meta">${escapeHtml(platforms)} ${video.dueToFilm ? "· due to film " + escapeHtml(video.dueToFilm) : ""} ${video.postDate ? "· posts " + escapeHtml(video.postDate) : ""}</div></div>
+      ${statusBadge(status, STATUS_LABEL)}
+    </div>
+    ${video.overview ? `<div style="margin:10px 0 4px;color:var(--sub);font-size:0.9rem">${escapeHtml(video.overview)}</div>` : ""}
+    <div data-field-display></div>
+    ${video.note ? `<div class="meta" style="margin-top:8px">Note: ${escapeHtml(video.note)}</div>` : ""}
+    <div class="edit-panel" data-edit-panel style="display:none;margin-top:12px"></div>
+    <div class="actions" style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+      ${(CONFIG.driveFolders || {}).footageUploads ? `<a class="btn" href="${CONFIG.driveFolders.footageUploads}" target="_blank" rel="noopener">📁 Drop footage here</a>` : ""}
+      ${IS_OPERATOR ? `<button data-edit-toggle>✏️ Edit</button>` : ""}
+    </div>
+  `;
+  renderFieldDisplay(card, video);
+  card.querySelector("[data-open]").onclick = () => openClientVideoModal(video.id);
+  if (IS_OPERATOR) card.querySelector("[data-edit-toggle]").onclick = () => toggleEditPanel(card, video);
+  const actions = card.querySelector(".actions");
+  (opts.buttons || []).forEach(b => actions.appendChild(b));
+  return card;
+}
+
+function fieldRow(label, value) {
+  return value ? `<div style="margin:10px 0 4px"><b style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">${label}</b><div style="white-space:pre-wrap;font-size:0.92rem;line-height:1.5">${escapeHtml(value)}</div></div>` : "";
+}
+function renderFieldDisplay(card, video) {
+  card.querySelector("[data-field-display]").innerHTML =
+    fieldRow("Hook", video.hook) + fieldRow("Filming direction", video.filmingDirection) + fieldRow("Caption", video.caption);
+}
+
+// Operator-only: every field worth editing on a video, in one shared list
+// so the per-card edit panel and the "+ Add video" form both render from
+// the same definitions and can't drift apart.
+const OPERATOR_FIELDS = [
+  { key: "title", label: "Title", type: "text" },
+  { key: "platform", label: "Platforms (comma-separated)", type: "list" },
+  { key: "overview", label: "Overview", type: "textarea", rows: 2 },
+  { key: "hook", label: "Hook", type: "textarea", rows: 2 },
+  { key: "filmingDirection", label: "Filming direction", type: "textarea", rows: 3 },
+  { key: "caption", label: "Caption", type: "textarea", rows: 2 },
+  { key: "dueToFilm", label: "Due to film", type: "date" },
+  { key: "dueToEdit", label: "Due to edit", type: "date" },
+  { key: "postDate", label: "Post date", type: "date" },
+  { key: "status", label: "Status", type: "select", options: STATUS_ORDER.concat(["rejected"]) },
+  { key: "assignedEditor", label: "Assigned editor", type: "text" },
+  { key: "note", label: "Note", type: "textarea", rows: 2 },
+];
+
+function fieldLabelHtml(text) {
+  return `<label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">${escapeHtml(text)}</label>`;
+}
+function renderFieldsForm(fields, video) {
+  return fields.map(f => {
+    const raw = f.type === "list" ? (video[f.key] || []).join(", ") : (video[f.key] != null ? video[f.key] : "");
+    if (f.type === "select") {
+      const opts = f.options.map(o => `<option value="${escapeHtml(o)}" ${o === video[f.key] ? "selected" : ""}>${escapeHtml((STATUS_LABEL && STATUS_LABEL[o]) || o)}</option>`).join("");
+      return fieldLabelHtml(f.label) + `<select data-f="${f.key}" data-type="text" style="width:100%;margin-bottom:10px">${opts}</select>`;
+    }
+    if (f.type === "date") {
+      return fieldLabelHtml(f.label) + `<input type="date" data-f="${f.key}" data-type="date" value="${escapeHtml(raw)}" style="margin-bottom:10px">`;
+    }
+    if (f.type === "textarea") {
+      return fieldLabelHtml(f.label) + `<textarea data-f="${f.key}" data-type="text" rows="${f.rows || 2}" style="width:100%;margin-bottom:10px">${escapeHtml(raw)}</textarea>`;
+    }
+    return fieldLabelHtml(f.label) + `<input type="text" data-f="${f.key}" data-type="${f.type}" value="${escapeHtml(raw)}" style="width:100%;margin-bottom:10px">`;
+  }).join("");
+}
+function readFieldsForm(panel) {
+  const patch = {};
+  panel.querySelectorAll("[data-f]").forEach(el => {
+    const key = el.dataset.f, type = el.dataset.type, val = el.value;
+    if (type === "list") patch[key] = val.split(",").map(s => s.trim()).filter(Boolean);
+    else if (type === "date") patch[key] = val || null;
+    else patch[key] = val;
+  });
+  return patch;
+}
+
+// Inline edit: toggles a form in place of the read-only fields. Only
+// reachable in operator mode. Saving goes through commit() — same
+// publish-or-local path as every other change on this page.
+function toggleEditPanel(card, video) {
+  const panel = card.querySelector("[data-edit-panel]");
+  const display = card.querySelector("[data-field-display]");
+  const open = panel.style.display !== "none";
+  if (open) { panel.style.display = "none"; display.style.display = ""; return; }
+  display.style.display = "none";
+  panel.style.display = "block";
+  panel.innerHTML = renderFieldsForm(OPERATOR_FIELDS, video) + `
+    <div style="display:flex;gap:8px">
+      <button class="primary" data-save>Save</button>
+      <button data-cancel>Cancel</button>
+    </div>
+  `;
+  panel.querySelector("[data-cancel]").onclick = () => { panel.style.display = "none"; display.style.display = ""; };
+  panel.querySelector("[data-save]").onclick = () => {
+    const patch = readFieldsForm(panel);
+    commit(video.id, patch);
+    panel.style.display = "none"; display.style.display = "";
+  };
+}
+
+// The click-into-full-record view, shared shape with the operator and
+// editor dashboards (openVideoModal in shell.js). Action buttons mirror
+// whatever inline buttons that status would show on the card.
+function openClientVideoModal(videoId) {
+  const overrides = loadOverrides();
+  const video0 = allVideos().find(v => v.id === videoId);
+  if (!video0) return;
+  const video = effectiveVideo(video0, overrides);
+  const status = video.status;
+  let actionsHtml = "";
+  if (status === "concept_pending") {
+    actionsHtml = `<button class="primary" onclick="setStatus('${videoId}','to_film');closeVideoModal()">Approve</button>
+      <button onclick="requestChange('${videoId}','concept_pending');closeVideoModal()">Request changes</button>
+      <button class="reject" onclick="reject('${videoId}');closeVideoModal()">Deny</button>`;
+  } else if (status === "to_film") {
+    actionsHtml = `<button class="primary" onclick="setStatus('${videoId}','filmed');closeVideoModal()">Mark filmed</button>
+      <button class="reject" onclick="reject('${videoId}');closeVideoModal()">Reject</button>`;
+  } else if (status === "filmed" && IS_SELF_SERVE) {
+    actionsHtml = `<button class="primary" onclick="setStatus('${videoId}','ready_to_edit');closeVideoModal()">Mark ready to edit</button>`;
+  } else if (status === "client_review") {
+    actionsHtml = `<button class="primary" onclick="setStatus('${videoId}','ready_to_post');closeVideoModal()">Approve — ready to post</button>
+      <button class="reject" onclick="requestChange('${videoId}','with_editor');closeVideoModal()">Request revisions</button>`;
+  }
+  openVideoModal(CONFIG, video, { actionsHtml, linkKeys: ["footageUploads"], hideEditorBrief: true });
+}
+
+function renderVideos() {
+  const overrides = loadOverrides();
+  document.getElementById("videosSubhead").textContent = IS_SELF_SERVE
+    ? "Approve concepts, film them, and give final sign-off before anything posts."
+    : "Tait handles the filming — you just give final sign-off before anything posts.";
+  document.getElementById("groupConcepts").style.display = IS_SELF_SERVE ? "" : "none";
+  document.getElementById("groupToFilm").style.display = IS_SELF_SERVE ? "" : "none";
+
+  const byStatus = {};
+  allVideos().forEach(v => { const s = effectiveStatus(v, overrides); (byStatus[s] = byStatus[s] || []).push(v); });
+  const fill = (elId, statuses, cardFn) => {
+    const el = document.getElementById(elId);
+    const vids = statuses.flatMap(s => byStatus[s] || []);
+    el.innerHTML = "";
+    if (!vids.length) { el.innerHTML = '<div class="empty">Nothing here.</div>'; return; }
+    vids.forEach(v => el.appendChild(cardFn(v, effectiveStatus(v, overrides), overrides)));
+  };
+
+  fill("listConcepts", ["concept_pending"], (v, s, o) => videoCard(v, s, o, { buttons: [
+    btn("Approve", () => setStatus(v.id, "to_film")),
+    btn("Request changes", () => requestChange(v.id, "concept_pending")),
+    btn("Deny", () => reject(v.id), true),
+  ]}));
+
+  fill("listToFilm", ["to_film"], (v, s, o) => videoCard(v, s, o, { buttons: [
+    btn("Mark filmed", () => setStatus(v.id, "filmed")),
+    btn("Reject", () => reject(v.id), true),
+  ]}));
+
+  fill("listReview", ["client_review"], (v, s, o) => videoCard(v, s, o, { buttons: [
+    btn("Approve — ready to post", () => setStatus(v.id, "ready_to_post")),
+    btn("Request revisions", () => requestChange(v.id, "with_editor"), true),
+  ]}));
+
+  fill("listProgress", ["filmed","ready_to_edit","with_editor","in_review"], (v, s, o) => {
+    if (!IS_SELF_SERVE || s !== "filmed") return videoCard(v, s, o);
+    return videoCard(v, s, o, { buttons: [ btn("Mark ready to edit", () => setStatus(v.id, "ready_to_edit")) ] });
+  });
+
+  fill("listDone", ["ready_to_post","posted"], (v, s, o) => videoCard(v, s, o));
+}
+
+function btn(label, onClick, isReject) {
+  const b = document.createElement("button");
+  b.textContent = label; if (isReject) b.className = "reject"; b.onclick = onClick; return b;
+}
+function setStatus(id, status, note) {
+  const patch = { status };
+  if (note !== undefined) patch.note = note;
+  commit(id, patch);
+}
+function reject(id) {
+  const note = prompt("Why is this one being denied? (goes in the status report)");
+  if (note === null) return;
+  setStatus(id, "rejected", note);
+}
+function requestChange(id, staysAtStatus) {
+  const note = prompt("What needs to change? (goes in the status report)");
+  if (note === null) return;
+  setStatus(id, staysAtStatus, note);
+}
+
+document.getElementById("reportBtn").onclick = () => {
+  const overrides = loadOverrides();
+  const lines = [];
+  allVideos().forEach(video => {
+    const o = overrides[video.id];
+    if (o && (o.status !== video.status || o.note != null)) {
+      lines.push(video.id + " | " + o.status.toUpperCase() + (o.note ? " | " + o.note : ""));
+    }
+  });
+  const now = new Date().toISOString().replace("T", " ").slice(0, 16);
+  const report = ["FULLY SOCIAL OS STATUS REPORT", "Client: " + CONFIG.client, "Generated: " + now, "---",
+    lines.length ? lines.join("\n") : "(no changes since last sync)"].join("\n");
+  const box = document.getElementById("reportBox"), ta = document.getElementById("reportText");
+  ta.value = report; box.style.display = "block"; ta.focus(); ta.select();
+};
+
+// Operator mode: reveal the extra chrome (badge, "+ Add video") and wire
+// "add" as one more field-form driven by OPERATOR_FIELDS, so it stays in
+// step with per-card editing automatically.
+if (IS_OPERATOR) {
+  document.getElementById("operatorBadge").style.display = "block";
+  document.getElementById("addVideoBtn").style.display = "";
+  document.getElementById("exitOperator").onclick = (e) => {
+    e.preventDefault();
+    try { localStorage.removeItem(OPERATOR_KEY); } catch (err) {}
+    location.reload();
+  };
+  document.getElementById("addVideoBtn").onclick = () => {
+    const panel = document.getElementById("addVideoPanel");
+    const showing = panel.style.display !== "none";
+    if (showing) { panel.style.display = "none"; return; }
+    const blank = { platform: [], status: "concept_pending" };
+    panel.innerHTML = `<h2 style="font-size:1rem;margin:0 0 14px">New video</h2>` + renderFieldsForm(OPERATOR_FIELDS, blank) + `
+      <div style="display:flex;gap:8px">
+        <button class="primary" data-save>Add video</button>
+        <button data-cancel>Cancel</button>
+      </div>`;
+    panel.style.display = "block";
+    panel.querySelector("[data-cancel]").onclick = () => { panel.style.display = "none"; };
+    panel.querySelector("[data-save]").onclick = () => {
+      const fields = readFieldsForm(panel);
+      if (!fields.title) { alert("Give it a title first."); return; }
+      fields.id = CONFIG.client + "-" + Date.now();
+      fields.note = fields.note || null;
+      fields.assignedEditor = fields.assignedEditor || null;
+      fields.editorBrief = { storyBeats: null, mustKeep: null, captionsStyle: null, musicVibe: null, ctaOverlay: null, platformSpecs: null };
+      addVideo(fields);
+      panel.style.display = "none";
+    };
+  };
+}
+
+function renderCalendar() {
+  const overrides = loadOverrides();
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startDow = first.getDay();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const byDay = {};
+  allVideos().forEach(v => {
+    const d = v.dueToFilm || v.postDate;
+    if (!d) return;
+    (byDay[d] = byDay[d] || []).push(v);
+  });
+  let html = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => `<div class="cal-dow">${d}</div>`).join("");
+  for (let i = 0; i < startDow; i++) html += `<div></div>`;
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = new Date(now.getFullYear(), now.getMonth(), day).toISOString().slice(0,10);
+    const items = byDay[dateStr] || [];
+    const isToday = dateStr === todayISO();
+    html += `<div class="cal-cell ${isToday ? "today" : ""}"><div class="daynum">${day}</div>` +
+      items.map(v => { const s = effectiveStatus(v, overrides); return `<div class="cal-chip video-card" style="background:color-mix(in srgb, var(--status-${s}) 20%, transparent); color:var(--status-${s})" onclick="openClientVideoModal('${escapeHtml(v.id)}')">${escapeHtml(v.title||v.id)}</div>`; }).join("") +
+      `</div>`;
+  }
+  document.getElementById("calGrid").innerHTML = html;
+}
+
+function renderAnalytics() {
+  const rows = CONFIG.analytics || [];
+  const byPlatform = {};
+  rows.forEach(r => { (byPlatform[r.platform] = byPlatform[r.platform] || []).push(r); });
+  Object.values(byPlatform).forEach(arr => arr.sort((a,b) => a.date.localeCompare(b.date)));
+  const latest = Object.values(byPlatform).map(arr => arr[arr.length-1]);
+  const totalFollowers = latest.reduce((n,r) => n + (r.followers||0), 0);
+  const totalImpr = rows.reduce((n,r) => n + (r.impressions||0), 0);
+  const avgEng = latest.length ? (latest.reduce((n,r) => n + (r.engagementRate||0),0) / latest.length).toFixed(1) : "—";
+  document.getElementById("anStats").innerHTML = [
+    { label: "Total followers", value: fmtNum(totalFollowers) },
+    { label: "Total impressions", value: fmtNum(totalImpr) },
+    { label: "Avg. engagement rate", value: avgEng + "%" },
+  ].map(s => `<div class="stat-card"><div class="label">${s.label}</div><div class="value">${s.value}</div></div>`).join("");
+
+  const series = Object.entries(byPlatform).map(([p, arr]) => ({ name: p, color: platformColor(p), points: arr.map(r => ({ x: r.date.slice(5), y: r.followers||0 })) }));
+  const chartEl = document.getElementById("anChart");
+  if (series.length) {
+    drawLineChart(chartEl, series, {});
+    document.getElementById("anLegend").innerHTML = series.map(s => `<span><span class="sw" style="background:${s.color}"></span>${escapeHtml(s.name)}</span>`).join("");
+  } else {
+    chartEl.innerHTML = '<div class="empty">No analytics entered yet.</div>';
+  }
+}
+
+let newsCategory = "All";
+function renderNews() {
+  const cats = ["All", ...Array.from(new Set(NEWS.map(n => n.category)))];
+  document.getElementById("newsChips").innerHTML = cats.map(c => `<div class="chip ${c === newsCategory ? "active" : ""}" data-c="${c}">${escapeHtml(c)}</div>`).join("");
+  document.querySelectorAll("#newsChips .chip").forEach(el => el.onclick = () => { newsCategory = el.dataset.c; renderNews(); });
+  const items = NEWS.filter(n => newsCategory === "All" || n.category === newsCategory);
+  document.getElementById("newsList").innerHTML = items.length ? items.map(n => `
+    <div class="row"><div class="left"><b><a href="${n.url}" target="_blank" rel="noopener">${escapeHtml(n.title)}</a></b>
+    <div class="meta">${escapeHtml(n.source)} · ${escapeHtml(n.date)}</div></div>
+    <span class="badge" style="background:var(--card2);color:var(--sub)">${escapeHtml(n.category)}</span></div>
+  `).join("") : '<div class="empty">Nothing filed under this category yet.</div>';
+}
+
+// My Videos tabs: "To Film" (concept approval through filming, plus a
+// read-only look at what's with the editor) vs. "Ready to Approve" (the
+// final review gate, plus history). Wired once — renderVideos() only
+// touches content, not which tab is showing.
+document.querySelectorAll('.chip[data-tab]').forEach(chip => {
+  chip.onclick = () => {
+    document.querySelectorAll('.chip[data-tab]').forEach(c => c.classList.remove("active"));
+    chip.classList.add("active");
+    document.getElementById("tabFilm").style.display = chip.dataset.tab === "film" ? "" : "none";
+    document.getElementById("tabApprove").style.display = chip.dataset.tab === "approve" ? "" : "none";
+  };
+});
+if (!IS_SELF_SERVE) {
+  // Concierge clients never approve a concept or film anything themselves —
+  // land them on the tab that actually has something to do.
+  document.querySelector('.chip[data-tab="approve"]').click();
+}
+
+function renderDocs() {
+  const f = CONFIG.driveFolders || {};
+  const docs = [
+    { label: "Customer Data", desc: "Pains, dreams, fears, goals — what your customers actually think.", url: f.customerData },
+    { label: "Voice", desc: "Your voice profile — how you sound, your words, your story.", url: f.brandVoice },
+    { label: "Content Ideas", desc: "Your 3 pillars, 3 formats, 3 perspectives, and the running idea bank.", url: f.contentIdeas },
+    { label: "How to Film High Quality", desc: "General filming guide — light, framing, audio, what \"good enough\" looks like.", url: RESOURCES.filmingGuide },
+  ].filter(d => d.url);
+  document.getElementById("docsList").innerHTML = docs.length ? docs.map(d => `
+    <div class="row"><div class="left"><b>${escapeHtml(d.label)}</b><div class="meta">${escapeHtml(d.desc)}</div></div>
+    <a class="btn primary" href="${d.url}" target="_blank" rel="noopener">Open</a></div>
+  `).join("") : '<div class="empty">Nothing linked yet.</div>';
+}
+
+// Quick actions: a one-click handoff from the operator dashboard's
+// cross-client queues (Edits awaiting approval, Ready to Post, + New
+// video idea). That dashboard can't publish into this document itself —
+// see dashboards/template/README.md — so instead it opens this exact
+// portal, in operator mode, with the action spelled out in the URL hash
+// as an opaque base64url token (buildHashState in shell.js) — plain query
+// params and "#key=value" hashes both get silently dropped by claude.ai's
+// Artifact wrapper, confirmed by testing; only a bare token survives.
+// This runs the action the moment the page loads. Reads INITIAL_HASH, not
+// location.hash — initRouter's first activate() call already rewrote the
+// visible hash to a bare view name by the time this runs, which is
+// exactly what stops a post-publish reload from replaying the action.
+async function runQuickActionIfAny() {
+  if (!IS_OPERATOR) return;
+  const params = INITIAL_HASH.params;
+  const approveId = params.get("quickApprove");
+  const reviseId = params.get("quickRevise");
+  const postId = params.get("quickPost");
+  const deliverId = params.get("quickDeliver");
+  const addPayload = params.get("quickAdd");
+  const noteRaw = params.get("note");
+  if (!approveId && !reviseId && !postId && !deliverId && !addPayload) return;
+
+  if (approveId) await commit(approveId, { status: "client_review" });
+  else if (reviseId) await commit(reviseId, { status: "with_editor", note: noteRaw || null });
+  else if (postId) await commit(postId, { status: "posted" });
+  else if (deliverId) await commit(deliverId, { status: "in_review" });
+  else if (addPayload) {
+    try {
+      const fields = JSON.parse(addPayload);
+      fields.id = fields.id || (CONFIG.client + "-" + Date.now());
+      fields.editorBrief = fields.editorBrief || { storyBeats: null, mustKeep: null, captionsStyle: null, musicVibe: null, ctaOverlay: null, platformSpecs: null };
+      await addVideo(fields);
+    } catch (e) { console.warn("bad quickAdd payload", e); }
+  }
+}
+
+renderHome(); renderVideos(); renderCalendar(); renderAnalytics(); renderNews(); renderDocs();
+initRouter("home");
+runQuickActionIfAny();
+</script>
+</body>
+</html>
