@@ -2,7 +2,7 @@
   "client": "test-fully-launched",
   "displayName": "Fully Launched",
   "clientSystem": "self-serve",
-  "portalUrl": "https://claude.ai/code/artifact/5e9e5b50-632e-49b7-96a5-95aa65f1f3d5",
+  "portalUrl": "http://localhost:8000/dashboards/clients/test-fully-launched/portal.html",
   "planWindow": { "start": "2026-08-01", "end": "2026-08-31" },
   "driveFolders": {
     "root": "https://drive.google.com/drive/folders/1X6CJurBCvH7N3fRQJ69uPuC0g4IlOD8z",

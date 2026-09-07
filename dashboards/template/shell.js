@@ -35,20 +35,13 @@ function platformColor(p) { return PLATFORM_COLOR[String(p || "").toLowerCase()]
 
 // Hash format is plain "#<view>" for normal navigation (unchanged), or
 // "#s_<base64url JSON>" when a link needs to hand this page one-shot data
-// — operator mode, quick actions (see client-portal.template.html and
-// dashboards/template/README.md). Two things forced the "s_<opaque
-// token>" shape, both confirmed by direct testing against a published
-// claude.ai Artifact, not assumed:
-//   1. Query-string params (?foo=bar) never reach the embedded document —
-//      the wrapper doesn't forward them at all.
-//   2. The hash DOES reach it, but only when it looks like a plain
-//      identifier. "#?operator=1" arrived as an empty hash — the wrapper
-//      silently drops anything containing "?", "=", "&". A bare
-//      base64url token (letters/digits/-/_ only, which is exactly what
-//      base64UrlEncode produces) survives.
-// initRouter only ever looks at the <view> part; read parseHashParams()
-// yourself for <params>, and do it before initRouter's first activate()
-// call, which immediately overwrites the hash with just the view name.
+// — quick actions (see client-portal.template.html). Kept as an opaque
+// token rather than plain "?foo=bar" query params mainly so a
+// JSON-stringified quickAdd payload (a whole new video's fields) doesn't
+// need per-field query-string encoding. initRouter only ever looks at the
+// <view> part; read parseHashParams() yourself for <params>, and do it
+// before initRouter's first activate() call, which immediately overwrites
+// the hash with just the view name.
 function parseHashParams() {
   const raw = window.location.hash.replace(/^#/, "");
   if (raw.startsWith("s_")) {

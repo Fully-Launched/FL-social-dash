@@ -5,11 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Fully Social OS — Operator</title>
 <style>/*__SHELL_CSS__*/</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/supabase/config.js"></script>
 </head>
 <body>
 
+<div id="authGate"></div>
+<div id="appShell" class="hidden">
+
 <nav class="sidebar">
   <div class="brand"><span class="dot"></span> Fully Social OS</div>
+  <div class="sync-badge" id="authUserBadge"></div>
   <div class="nav-item active" data-view="home"><span class="ic">🏠</span> Dashboard</div>
   <div class="nav-item" data-view="calendar"><span class="ic">📅</span> Content Calendar</div>
   <div class="nav-item" data-view="schedule"><span class="ic">🗓️</span> Schedule</div>
@@ -119,7 +125,10 @@
 
 </main>
 
+</div>
+
 <script>/*__SHELL_JS__*/</script>
+<script>/*__AUTH_JS__*/</script>
 <script>
 const CLIENTS = /*__CLIENTS_JSON__*/[];
 const NEWS = /*__NEWS_JSON__*/[];
@@ -243,20 +252,18 @@ function operatorRequestRevisions(clientSlug, videoId) {
   operatorSetStatus(clientSlug, videoId, "with_editor", note);
 }
 
-// Quick actions — the actual live path. This dashboard can't publish into
-// a different client's own Artifact (see dashboards/template/README.md),
-// so instead of acting here, these open that client's own portal in
-// operator mode with the action already spelled out in the URL; the
-// portal runs it and publishes the instant it loads. Falls back to the
-// local-only functions above only if that client has no portalUrl yet.
-// buildHashState (shell.js) is required here, not a plain query string or
-// "#key=value" hash — both get silently dropped by claude.ai's Artifact
-// wrapper before the embedded document ever sees them (confirmed by
-// testing); only a bare base64url token in the hash survives.
+// Quick actions — the actual live path. This dashboard can't reach into a
+// different client's own portal page from here, so instead of acting
+// here, these open that client's own portal with the action already
+// spelled out in the URL hash (buildHashState, shell.js); the portal runs
+// it against its own localStorage the instant it loads. Whoever opens the
+// link needs their own operator login to actually apply it — see
+// resolveClientPortalAccess in client-portal.template.html. Falls back to
+// the local-only functions above only if that client has no portalUrl yet.
 function quickLink(client, params) {
   if (!client || !client.portalUrl) return null;
   const base = client.portalUrl.split("#")[0].split("?")[0];
-  return base + buildHashState(Object.assign({ operator: "1" }, params));
+  return base + buildHashState(params);
 }
 function goLiveApprove(clientSlug, videoId) {
   const client = CLIENTS.find(c => c.client === clientSlug);
@@ -346,11 +353,14 @@ function renderHome() {
     const f = c.driveFolders || {};
     const links = ["root","footageUploads","finalEdits","brandVoice","hooks","assets"]
       .filter(k => f[k]).map(k => `<a class="btn" style="margin-right:6px;font-size:0.75rem;padding:4px 9px" href="${f[k]}" target="_blank" rel="noopener">${k}</a>`).join("");
-    // "Live edit" jumps into that client's own portal link with operator
-    // mode on. This dashboard aggregates every client's config.json (a
-    // git file) and can't publish into a different, separate artifact —
-    // so edits meant to reach that client live have to happen inside
-    // their own portal, not from here. See dashboards/template/README.md.
+    // "Live edit" jumps into that client's own portal. This dashboard
+    // aggregates every client's config.json (a git file, read-only from
+    // here) — actually editing a video has to happen inside that client's
+    // own portal, which is why this just opens it rather than editing in
+    // place. Whoever clicks it needs their own operator login there too;
+    // signing in once carries across dashboards served from the same
+    // origin, since the Supabase session lives in that origin's own
+    // localStorage.
     const liveEdit = c.portalUrl
       ? `<a class="btn primary" style="margin-right:6px;font-size:0.75rem;padding:4px 9px" href="${quickLink(c, {})}" target="_blank" rel="noopener">🔧 Live edit</a>`
       : "";
@@ -605,8 +615,20 @@ function renderAll() {
   renderGlobalClientFilter();
   renderHome(); renderCalendar(); renderSchedule(); renderReview(); renderPost(); renderCompetitors(); renderAnalytics(); renderNews();
 }
-renderAll();
-initRouter("home");
+
+// This dashboard is Tait's own view — only a social_operators login gets
+// past the gate, never an editor or client_user login even if they know
+// the URL.
+async function resolveOperatorAccess(sb, user) {
+  const { data: op } = await sb.from("social_operators").select("*").eq("id", user.id).maybeSingle();
+  if (!op) return { ok: false, reason: "This login isn't set up as an operator — ask an existing operator to add you." };
+  return { ok: true, role: "operator", roleRow: op };
+}
+
+initAuthGate({
+  resolveAccess: resolveOperatorAccess,
+  onReady: () => { renderAll(); initRouter("home"); },
+});
 </script>
 </body>
 </html>

@@ -1,7 +1,15 @@
 # Dashboard template
 
 Three static, self-contained HTML files, built once and shared across every
-client:
+client. `build.py` writes all generated output to `dashboards/dist/`
+(gitignored — `python3 dashboards/build.py` regenerates it, and it's what
+Vercel deploys, per `vercel.json` at the repo root) — `client-portal.html`
+lands at `dist/clients/<slug>/portal.html`, `operator-dashboard.html` at
+`dist/operator/dashboard.html`, `editor-dashboard.html` at
+`dist/editor/dashboard.html`. Nothing outside `dist/` is ever written by
+the build, and `dist/` itself holds nothing but that output — the
+templates and source `config.json` files it reads stay where they are,
+described below.
 
 - `client-portal.html` — one per client, reads that client's `config.json`
   and `news.json`. For a `self-serve` client: shows concepts awaiting the
@@ -20,116 +28,61 @@ client:
   page (Calendar, Schedule, Content Review, Ready to Post, Competitor
   Tracker, Analytics, News) down to just them and surfaces a "🔧 Add / edit
   videos for `<client>`" button. That button is the answer to "add a video
-  for this client" — it opens their own live portal in operator mode (see
-  Live sync below), since this dashboard itself has no way to write into a
-  different, separate Artifact.
+  for this client" — it opens their own portal (see Auth below), since
+  this dashboard itself is a read-only-ish overview and has no way to edit
+  a different page's data in place.
 - `editor-dashboard.html` — one shared file, not per-client. Reads every
   client's `config.json` and shows every video currently `with_editor`, as
   both a list and a due-date calendar: the editing brief, a link to the
   footage, a link to that client's brand voice doc, and the due-to-edit
   date. Marking a video delivered moves it to `in_review`.
 
-None of the three talk to a server. Adding a second client means adding
-`dashboards/clients/<slug>/config.json` — none of the template HTML changes.
-`client-portal.html` optionally *does* stay live once it's published as a
-claude.ai Artifact — see Live sync below; `operator-dashboard.html` and
-`editor-dashboard.html` stay copy-paste-synced the way they always were.
+None of the three talk to a server for their content data — `config.json`
+(git) plus each browser's own `localStorage` overrides remain the source
+of truth, relayed between the operator and everyone else via the
+copy-paste status report. All three *do* talk to Supabase for one thing
+only: who's allowed to open them — see Auth below.
 
-## Live sync (client portals only)
+## Auth
 
-When a client's `portal.html` is published as a claude.ai Artifact with the
-`artifact` runtime capability declared, every status change, revision
-request, and (in operator mode) field edit republishes the whole document —
-every open tab on that link, the client's included, reloads to the new
-state on its own. No manual rebuild, no status-report relay, for that
-client. This works by the page carrying its own template as a string
-inside itself (`PAGE_SHELL` in `client-portal.template.html`, built by
-`build.py`) so the browser can regenerate a complete, valid document from
-new data and hand it to `artifact.publish()` — which only accepts a full
-document, not a patch.
+All three dashboards sit behind a real login (`dashboards/template/auth.js`,
+inlined by `build.py` the same way as `shell.js`/`shell.css`), backed by
+Supabase Auth and the three role tables in
+`supabase/migrations/001_social_os_schema.sql`. Nothing renders — no page
+content, no data — until the gate resolves who's signed in:
 
-**Operator mode.** Opening a client's own portal link with the hash
-`#s_eyJvcGVyYXRvciI6IjEifQ` (that's `buildHashState({operator:"1"})` from
-shell.js — not something to hand-type) unlocks full editing on top of
-whatever the client can already do: every field on a video, a raw status
-dropdown, and "+ Add video" for brand-new ones. It remembers the flag in
-that browser's `localStorage` so the link isn't needed every time; the
-sidebar's "exit" link turns it back off. There's no real auth behind this
-— same posture as everything else here — the plain link you actually hand
-a client just never carries the flag. The operator dashboard's client
-list has a "🔧 Live edit" button per client (once that client has a
-`portalUrl` in their config) that builds this link and opens it for you —
-that's the only supported way to get into operator mode, since the token
-isn't meant to be constructed by hand.
+- **Operator dashboard** — only a `social_operators` login gets in.
+- **Editor dashboard** — an active `social_editors` login, or any
+  `social_operators` login.
+- **Client portal** — either a `social_client_users` login whose
+  `client_id` resolves to *this* portal's own client (checked via a
+  `social_clients` lookup, so one client's login can't open another
+  client's portal by guessing the URL), or any `social_operators` login —
+  which is what makes a logged-in operator "operator mode" inside a
+  client's portal: `IS_OPERATOR` is set from the real login's role, not a
+  URL flag. There is no other way in, and no unauthenticated fallback.
 
-**Quick actions** — the same client list, filtered to one client, adds a
-"+ New video idea" composer and turns the Content Review / Ready to Post
-queues' Approve / Request revisions / Mark posted buttons into links that
-open that client's own portal with the action already spelled out
-(`quickApprove`, `quickRevise` [+ `note`], `quickPost`, or `quickAdd` [a
-whole new video's fields, JSON-stringified] — all read by
-`runQuickActionIfAny()` in client-portal.template.html). The portal runs
-the action and publishes the moment it loads, then cleans the one-shot
-data out of its own hash so a later reload never replays it. Falls back to
-the old local-only buttons for any client with no `portalUrl` on file.
+Signing in once carries across all three dashboards as long as they're
+served from the same origin (e.g. one local `python3 -m http.server` at
+the repo root) — the Supabase session lives in that origin's own
+`localStorage`. Opened as separate `file://` pages instead, each may need
+its own sign-in, since browsers don't reliably share `localStorage` across
+different `file://` paths.
 
-**`editor-dashboard.html` does this too**, one action: "Mark delivered"
-always keeps its old local-only behavior (own `localStorage`, still what
-feeds "Delivered" and the status report), and *additionally* opens the
-client's own live portal with `quickDeliver` if that client has a
-`portalUrl` — so a client with live sync turned on sees `with_editor` flip
-to `in_review` immediately, not just whenever the operator applies a
-pasted report. Same `quickLink`/`buildHashState` pattern, same fallback
-when there's no live portal to push to.
-
-**Why this can't be driven from the operator dashboard instead.** A
-published Artifact can only publish new versions of *itself* — there's no
-API for one artifact to write into a different one. So an edit made "for"
-a specific client has to happen inside *that client's own* portal
-document, not from a separate all-clients aggregate page. The operator
-dashboard stays what it's always been: a read-only-ish overview sourced
-from git `config.json`, useful for triage (what's overdue, what's waiting
-on whom) — not a live editing surface. Live editing across every client
-means visiting each client's own link.
-
-**Consequences worth knowing before relying on this:**
-- **A publicly-shared link ("anyone with the link") can never auto-track
-  "Latest" — it's always pinned to one snapshot.** There's also no way to
-  invite a client by name/email in the Artifact Share panel (checked: it
-  isn't there) — sharing is binary, private-to-you or public link. So the
-  real workflow is: make new edits, then reopen Share → Shared version →
-  pick the newest version. Same URL, no new link to send — just a
-  ten-second manual step after any batch of changes you want the client to
-  see. This can't be automated away; the platform requires a public link
-  to be pinned.
-- **Saving reloads the page**, for whoever clicked save too — expected,
-  not a bug.
-- **After several publishes in quick succession, the page can sit blank
-  (black, then briefly white) for up to 20-30 seconds before it renders** —
-  confirmed by testing to be the artifact platform catching up, not a
-  broken publish. Don't conclude something's corrupted from a blank screen
-  alone; wait it out, or open the link in a fresh tab.
-- **Quick-action links (below) must encode their data in the URL hash as
-  an opaque token, never as `?query=params` or a `#key=value` hash** — the
-  claude.ai wrapper silently drops both of those before the embedded page
-  ever sees them; only a bare base64url token (`buildHashState` in
-  shell.js) survives. Confirmed by direct testing, not assumed.
-- **A client's own actions (approve/reject/mark filmed) do publish live**
-  through the public link — confirmed by testing, not just the client's
-  own browser. Don't assume this is universal, though: if a viewer's
-  publish ever comes back `not_writer`/`not_granted`, the sync badge
-  switches to 🔒 and that device falls back to saving locally only.
-- **`config.json` in this repo drifts out of date** for any client
-  actively being live-edited in their own Artifact, since edits now happen
-  in the browser, not through `calendar-planner` writing this file. Treat
-  the live Artifact as that client's real source of truth once this is
-  turned on for them; re-sync `config.json` from it deliberately when
-  needed, don't assume it's current.
-- **Per-client privacy is preserved** by keeping each client on their own
-  separate Artifact/document — only that client's own data is ever shipped
-  to their browser. Don't be tempted to merge multiple clients' data into
-  one shared document for convenience; that would ship every other
-  client's content to anyone with any one client's link.
+**Quick actions** — the operator dashboard's client list, filtered to one
+client, adds a "+ New video idea" composer and turns the Content Review /
+Ready to Post queues' Approve / Request revisions / Mark posted buttons
+into links that open that client's own portal with the action already
+spelled out (`quickApprove`, `quickRevise` [+ `note`], `quickPost`, or
+`quickAdd` [a whole new video's fields, JSON-stringified] — all read by
+`runQuickActionIfAny()` in client-portal.template.html, and only run once
+that page's own auth gate confirms an operator login). The portal applies
+the action to its own `localStorage` the instant it loads, then cleans the
+one-shot data out of its own hash so a later reload never replays it.
+Falls back to the plain local-only buttons for any client with no
+`portalUrl` on file. `editor-dashboard.html`'s "Mark delivered" does the
+same thing, one action (`quickDeliver`), on top of its own always-on local
+override.
 
 ## The video card
 
@@ -179,7 +132,7 @@ both in sync; don't hand-edit one without the other.
   "client": "grad-gig",
   "displayName": "Grad Gig",
   "clientSystem": "self-serve",   // or "concierge" — see gate 1 above
-  "portalUrl": "<the published claude.ai Artifact link for this client's portal.html, once it's live-synced — powers the operator dashboard's \"Live edit\" deep link, see Live sync below>",
+  "portalUrl": "<the URL this client's portal.html is actually served from — powers the operator/editor dashboards' \"Live edit\"/quick-action deep links, see Auth above>",
   "planWindow": { "start": "2026-08-24", "end": "2026-09-18" },
   "driveFolders": {
     "root": "<link — the client's folder inside the Fully Social OS Drive folder>",

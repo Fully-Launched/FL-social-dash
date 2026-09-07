@@ -148,8 +148,23 @@ button, .btn { font:inherit; font-size:0.85rem; padding:8px 15px; border-radius:
 button.primary, .btn.primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:600; }
 button.reject { color:var(--red); }
 a.btn { text-decoration:none; display:inline-block; }
-textarea, input[type=text] { width:100%; font:inherit; padding:10px 12px; border-radius:9px; border:1px solid var(--border); background:var(--bg); color:var(--ink); }
+textarea, input[type=text], input[type=email], input[type=password] { width:100%; font:inherit; padding:10px 12px; border-radius:9px; border:1px solid var(--border); background:var(--bg); color:var(--ink); }
 textarea { font:12px/1.5 ui-monospace,monospace; }
 
 .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
 @media (max-width:760px) { .grid-2 { grid-template-columns:1fr; } .sidebar { display:none; } }
+
+.hidden { display:none; }
+
+/* Auth gate — full-screen login shown until Supabase confirms a signed-in,
+   authorized session; #appShell (the whole sidebar+main app) stays hidden
+   until then. See dashboards/template/auth.js. */
+#appShell { display:flex; width:100%; min-height:100vh; }
+.auth-gate { position:fixed; inset:0; z-index:2000; display:flex; align-items:center; justify-content:center; background:var(--bg); }
+.auth-card { width:100%; max-width:340px; background:var(--card); border:1px solid var(--border); border-radius:16px; padding:30px 26px 26px; }
+.auth-card label { display:block; font-size:0.8rem; color:var(--sub); margin-bottom:14px; }
+.auth-card input { display:block; width:100%; margin-top:6px; }
+.auth-card button { width:100%; margin-top:2px; }
+.auth-error { min-height:1.3em; font-size:0.82rem; margin:10px 0 4px; line-height:1.4; }
+.auth-forgot { display:block; text-align:center; margin-top:14px; font-size:0.8rem; color:var(--sub); text-decoration:none; }
+.auth-forgot:hover { color:var(--ink); }

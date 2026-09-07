@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """
 Regenerates the dashboards from dashboards/clients/<slug>/config.json and
-dashboards/operator/news.json.
+dashboards/operator/news.json, writing everything into dashboards/dist/ —
+the one directory meant to be served (Vercel's Output Directory points
+here; see vercel.json). Nothing outside dist/ is ever written by this
+script, and dist/ itself holds nothing but build output — no source
+config.json/template files live in it.
 
 Run this after calendar-planner updates a client's config.json, after
 editing news.json/competitors/analytics, or after adding a new client. It
-never touches the templates — only the generated output files.
+never touches the templates — only dist/.
 
 Usage: python3 dashboards/build.py
 """
@@ -16,10 +20,11 @@ ROOT = Path(__file__).parent
 CLIENTS_DIR = ROOT / "clients"
 TEMPLATE_DIR = ROOT / "template"
 OPERATOR_DIR = ROOT / "operator"
-EDITOR_DIR = ROOT / "editor"
+DIST_DIR = ROOT / "dist"
 
 SHELL_CSS = (TEMPLATE_DIR / "shell.css").read_text()
 SHELL_JS = (TEMPLATE_DIR / "shell.js").read_text()
+AUTH_JS = (TEMPLATE_DIR / "auth.js").read_text()
 
 
 def load_client_configs():
@@ -49,18 +54,17 @@ def load_agency_resources():
 def inline_shell(html):
     html = html.replace("/*__SHELL_CSS__*/", SHELL_CSS)
     html = html.replace("/*__SHELL_JS__*/", SHELL_JS)
+    html = html.replace("/*__AUTH_JS__*/", AUTH_JS)
     return html
 
 
 CONFIG_PLACEHOLDER = "/*__CONFIG_JSON__*/null"
-PAGE_SHELL_PLACEHOLDER = '/*__PAGE_SHELL_JSON__*/""'
 
 
 def safe_json(value):
     """json.dumps, but with </script sequences broken up so embedding the
-    result inside a <script> block can't prematurely close the tag. Matters
-    for CONFIG (defensive) and is required for PAGE_SHELL, which contains
-    the page's own <script> tags verbatim."""
+    result inside a <script> block can't prematurely close the tag —
+    defensive, in case a client's data ever contains that literal text."""
     return json.dumps(value, indent=2).replace("</script", "<\\/script")
 
 
@@ -79,17 +83,8 @@ def build_client_portal(config, news, resources):
     ]
     out = out.replace("/*__NEWS_JSON__*/[]", json.dumps(client_news, indent=2))
     out = out.replace("/*__RESOURCES_JSON__*/{}", json.dumps(resources, indent=2))
-    # Everything above is fixed at build time (news/resources/plan window
-    # don't change from the browser). What's left — CONFIG_PLACEHOLDER and
-    # PAGE_SHELL_PLACEHOLDER — stays untouched in `out`, which is exactly
-    # what PAGE_SHELL needs to be: the page's own template, still
-    # parameterized by one CONFIG slot, so a live-sync publish() from
-    # inside the browser can re-inject a new CONFIG and hand back a
-    # complete, valid document (itself included) as the new version.
-    shell = out
-    final = shell.replace(CONFIG_PLACEHOLDER, safe_json(config))
-    final = final.replace(PAGE_SHELL_PLACEHOLDER, safe_json(shell))
-    out_dir = CLIENTS_DIR / config["client"]
+    final = out.replace(CONFIG_PLACEHOLDER, safe_json(config))
+    out_dir = DIST_DIR / "clients" / config["client"]
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "portal.html"
     out_path.write_text(final)
@@ -101,8 +96,9 @@ def build_operator_dashboard(configs, news):
     out = inline_shell(template)
     out = out.replace("/*__CLIENTS_JSON__*/[]", json.dumps(configs, indent=2))
     out = out.replace("/*__NEWS_JSON__*/[]", json.dumps(news.get("items", []), indent=2))
-    OPERATOR_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OPERATOR_DIR / "dashboard.html"
+    out_dir = DIST_DIR / "operator"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "dashboard.html"
     out_path.write_text(out)
     return out_path
 
@@ -112,8 +108,9 @@ def build_editor_dashboard(configs, resources):
     out = inline_shell(template)
     out = out.replace("/*__CLIENTS_JSON__*/[]", json.dumps(configs, indent=2))
     out = out.replace("/*__RESOURCES_JSON__*/{}", json.dumps(resources, indent=2))
-    EDITOR_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = EDITOR_DIR / "dashboard.html"
+    out_dir = DIST_DIR / "editor"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "dashboard.html"
     out_path.write_text(out)
     return out_path
 

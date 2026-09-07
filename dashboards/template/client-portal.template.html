@@ -5,13 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>__DISPLAY_NAME__</title>
 <style>/*__SHELL_CSS__*/</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/supabase/config.js"></script>
 </head>
 <body>
 
+<div id="authGate"></div>
+<div id="appShell" class="hidden">
+
 <nav class="sidebar">
   <div class="brand"><span class="dot"></span> __DISPLAY_NAME__</div>
-  <div class="sync-badge" id="syncBadge"></div>
-  <div class="sync-badge" id="operatorBadge" style="display:none">🔧 Operator mode — <a href="#" id="exitOperator" style="color:inherit;text-decoration:underline">exit</a></div>
+  <div class="sync-badge" id="authUserBadge"></div>
+  <div class="sync-badge" id="operatorBadge" style="display:none">🔧 Operator — full edit access</div>
   <div class="nav-item active" data-view="home"><span class="ic">🏠</span> Dashboard</div>
   <div class="nav-item" data-view="videos"><span class="ic">🎬</span> My Videos</div>
   <div class="nav-item" data-view="calendar"><span class="ic">📅</span> Content Calendar</div>
@@ -98,45 +103,31 @@
 
 </main>
 
+</div>
+
 <script>/*__SHELL_JS__*/</script>
+<script>/*__AUTH_JS__*/</script>
 <script>
 const CONFIG = /*__CONFIG_JSON__*/null;
 const NEWS = /*__NEWS_JSON__*/[];
 const RESOURCES = /*__RESOURCES_JSON__*/{};
-// The page's own source, verbatim, with CONFIG still unresolved — see
-// "Live sync" below. Publishing a change means re-injecting a new CONFIG
-// into this same template and handing the platform the whole document.
-const PAGE_SHELL = /*__PAGE_SHELL_JSON__*/"";
 const STORE_KEY = "fso_status_" + CONFIG.client;
 const EXTRA_KEY = "fso_extra_videos_" + CONFIG.client;
-const OPERATOR_KEY = "fso_operator_" + CONFIG.client;
 const IS_SELF_SERVE = CONFIG.clientSystem !== "concierge";
 const EDITABLE_FIELDS = ["hook", "caption", "filmingDirection"];
 
 // Captured once, before initRouter's first activate() call rewrites the
-// hash down to a bare view name — anything reading one-shot hash data
-// (operator flag, quick actions below) must use this snapshot, not
-// re-parse location.hash later. A claude.ai Artifact's wrapper does not
-// forward query-string params into the embedded document (confirmed by
-// testing) — only the hash survives — so this, not ?foo=bar, is the only
-// way a link can hand this page one-shot data.
+// hash down to a bare view name — quick actions below read this snapshot,
+// not location.hash, since by the time they run initRouter has already
+// rewritten the visible hash to a bare view name.
 const INITIAL_HASH = parseHashParams();
-// Operator mode: everything the client can already do (approve, reject,
-// mark filmed) stays exactly as before, on the plain link. Opening this
-// same link with #?operator=1 once additionally unlocks full editing —
-// every field, plus adding brand-new videos — and remembers that in this
-// browser so it doesn't have to be in the URL every time. There's no real
-// auth here (same posture as the rest of this system); the client link
-// you actually hand out just never carries the flag.
-function checkOperatorMode() {
-  try {
-    const flag = INITIAL_HASH.params.get("operator");
-    if (flag === "1") { localStorage.setItem(OPERATOR_KEY, "1"); return true; }
-    if (flag === "0") { localStorage.removeItem(OPERATOR_KEY); return false; }
-    return localStorage.getItem(OPERATOR_KEY) === "1";
-  } catch (e) { return false; }
-}
-const IS_OPERATOR = checkOperatorMode();
+
+// Set once the auth gate resolves who's signed in (see
+// resolveClientPortalAccess + startApp below): true for a social_operators
+// login, false for this client's own social_client_users login. Everything
+// that gates editing (the "✏️ Edit" button, "+ Add video", quick actions)
+// checks this — the real login is the access check now, not a URL flag.
+let IS_OPERATOR = false;
 
 function loadOverrides() { try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); } catch (e) { return {}; } }
 function saveOverrides(o) { try { localStorage.setItem(STORE_KEY, JSON.stringify(o)); } catch (e) {} }
@@ -156,108 +147,22 @@ function effectiveVideo(video, overrides) {
   return merged;
 }
 
-// --- Live sync -------------------------------------------------------
-// If this page is open as a claude.ai Artifact with write access, every
-// change below also republishes the whole document so every other open
-// view (the client's tab, Tait's tab) reloads to the same state — no
-// manual rebuild. If it isn't (opened locally, or this viewer is
-// read-only), changes still save via the localStorage override above,
-// same as before; they just stay on this one device until relayed.
-let syncMode = "checking"; // "live" | "local" | "readonly"
-
-async function getArtifactNS() {
-  try {
-    if (typeof window.claude === "undefined" || !window.claude.use) return null;
-    return await window.claude.use("artifact");
-  } catch (e) { return null; }
-}
-
-function buildFullHtml(config) {
-  // PAGE_SHELL still contains the literal, unresolved placeholder text —
-  // put back by build.py specifically so this replace keeps working.
-  // Built via concatenation, not as one literal, so build.py's own
-  // placeholder substitution doesn't also rewrite this line.
-  const marker = "/*__CONFIG_JSON__*/" + "null";
-  return PAGE_SHELL.replace(marker, JSON.stringify(config));
-}
-
-function setSyncBadge(mode) {
-  syncMode = mode;
-  const el = document.getElementById("syncBadge");
-  if (!el) return;
-  const map = {
-    checking: ["", ""],
-    live: ["sync-live", "🟢 Live — changes sync automatically"],
-    local: ["sync-local", "💾 Local only — this view can't publish, changes stay on this device"],
-    readonly: ["sync-local", "🔒 Read-only here — changes stay on this device until relayed"],
-  };
-  const [cls, label] = map[mode] || map.local;
-  el.className = "sync-badge " + cls;
-  el.textContent = label;
-}
-
-// One-time probe at load, just to show the badge — every actual commit()
-// call re-checks for itself rather than trusting this cached guess.
-getArtifactNS().then(ns => setSyncBadge(ns ? "live" : "local"));
-
-// The single path every state change goes through: apply locally first
-// (instant feedback, and the fallback if publishing isn't possible), then
-// best-effort publish the mutated result as the new canonical document.
-// `mutateFn` edits a draft copy of CONFIG for the real publish; `local`/
-// `clearLocal` are the matching localStorage-only fallback and its cleanup
-// once a publish actually lands.
-async function commitMutation(mutateFn, hooks) {
-  hooks = hooks || {};
-  if (hooks.local) hooks.local();
-
-  const artifact = await getArtifactNS();
-  if (!artifact) { setSyncBadge("local"); return; }
-  const draft = JSON.parse(JSON.stringify(CONFIG));
-  mutateFn(draft);
-  try {
-    await artifact.publish(buildFullHtml(draft));
-    // Publish succeeded — every open view (this one included) is about to
-    // reload to the new document, so the local-only copy is now redundant.
-    if (hooks.clearLocal) hooks.clearLocal();
-  } catch (e) {
-    if (e && (e.code === "not_writer" || e.code === "not_granted")) {
-      setSyncBadge("readonly");
-    } else if (e && e.code === "conflict") {
-      // Someone else published in between — the platform reloads this
-      // view to their version on its own; nothing more to do here.
-    } else {
-      console.warn("live publish failed", e);
-    }
-  }
-}
-
+// Every status/field change is written straight to this browser's own
+// localStorage override — the same fallback path this always had for a
+// view that couldn't publish live, now the only path. Relayed to the real
+// dashboard via the status report ("Generate status report" below) and
+// applied there by calendar-planner, same as always.
 function commit(id, patch) {
-  return commitMutation(
-    draft => { const v = draft.videos.find(x => x.id === id); if (v) Object.assign(v, patch); },
-    {
-      local: () => {
-        const o = loadOverrides();
-        o[id] = Object.assign({}, o[id], patch, { changedAt: new Date().toISOString() });
-        saveOverrides(o);
-        renderVideos(); renderHome(); renderCalendar();
-      },
-      clearLocal: () => { const o = loadOverrides(); delete o[id]; saveOverrides(o); },
-    }
-  );
+  const o = loadOverrides();
+  o[id] = Object.assign({}, o[id], patch, { changedAt: new Date().toISOString() });
+  saveOverrides(o);
+  renderVideos(); renderHome(); renderCalendar();
 }
 
 // Operator-only: a brand-new video, added straight from this portal.
 function addVideo(fields) {
-  return commitMutation(
-    draft => { draft.videos.push(fields); },
-    {
-      local: () => {
-        const arr = loadExtraVideos(); arr.push(fields); saveExtraVideos(arr);
-        renderVideos(); renderHome(); renderCalendar();
-      },
-      clearLocal: () => { saveExtraVideos(loadExtraVideos().filter(v => v.id !== fields.id)); },
-    }
-  );
+  const arr = loadExtraVideos(); arr.push(fields); saveExtraVideos(arr);
+  renderVideos(); renderHome(); renderCalendar();
 }
 
 function renderHome() {
@@ -485,17 +390,14 @@ document.getElementById("reportBtn").onclick = () => {
   ta.value = report; box.style.display = "block"; ta.focus(); ta.select();
 };
 
-// Operator mode: reveal the extra chrome (badge, "+ Add video") and wire
-// "add" as one more field-form driven by OPERATOR_FIELDS, so it stays in
-// step with per-card editing automatically.
-if (IS_OPERATOR) {
+// Reveal the extra chrome (badge, "+ Add video") for a real operator login
+// and wire "add" as one more field-form driven by OPERATOR_FIELDS, so it
+// stays in step with per-card editing automatically. Called from
+// startApp() once IS_OPERATOR is known — see resolveClientPortalAccess.
+function wireOperatorControls() {
+  if (!IS_OPERATOR) return;
   document.getElementById("operatorBadge").style.display = "block";
   document.getElementById("addVideoBtn").style.display = "";
-  document.getElementById("exitOperator").onclick = (e) => {
-    e.preventDefault();
-    try { localStorage.removeItem(OPERATOR_KEY); } catch (err) {}
-    location.reload();
-  };
   document.getElementById("addVideoBtn").onclick = () => {
     const panel = document.getElementById("addVideoPanel");
     const showing = panel.style.display !== "none";
@@ -617,18 +519,16 @@ function renderDocs() {
 }
 
 // Quick actions: a one-click handoff from the operator dashboard's
-// cross-client queues (Edits awaiting approval, Ready to Post, + New
-// video idea). That dashboard can't publish into this document itself —
-// see dashboards/template/README.md — so instead it opens this exact
-// portal, in operator mode, with the action spelled out in the URL hash
-// as an opaque base64url token (buildHashState in shell.js) — plain query
-// params and "#key=value" hashes both get silently dropped by claude.ai's
-// Artifact wrapper, confirmed by testing; only a bare token survives.
-// This runs the action the moment the page loads. Reads INITIAL_HASH, not
-// location.hash — initRouter's first activate() call already rewrote the
-// visible hash to a bare view name by the time this runs, which is
-// exactly what stops a post-publish reload from replaying the action.
-async function runQuickActionIfAny() {
+// cross-client queues (Edits awaiting approval, Ready to Post, + New video
+// idea). That dashboard can't reach into this page's own localStorage from
+// a different page, so instead it opens this exact portal with the action
+// spelled out in the URL hash as an opaque base64url token (buildHashState
+// in shell.js), and this runs the action the moment the page loads — once
+// the real operator login above has been confirmed, not before. Reads
+// INITIAL_HASH, not location.hash — initRouter's first activate() call
+// already rewrote the visible hash to a bare view name by the time this
+// runs, which is what stops a reload from replaying the action.
+function runQuickActionIfAny() {
   if (!IS_OPERATOR) return;
   const params = INITIAL_HASH.params;
   const approveId = params.get("quickApprove");
@@ -639,23 +539,48 @@ async function runQuickActionIfAny() {
   const noteRaw = params.get("note");
   if (!approveId && !reviseId && !postId && !deliverId && !addPayload) return;
 
-  if (approveId) await commit(approveId, { status: "client_review" });
-  else if (reviseId) await commit(reviseId, { status: "with_editor", note: noteRaw || null });
-  else if (postId) await commit(postId, { status: "posted" });
-  else if (deliverId) await commit(deliverId, { status: "in_review" });
+  if (approveId) commit(approveId, { status: "client_review" });
+  else if (reviseId) commit(reviseId, { status: "with_editor", note: noteRaw || null });
+  else if (postId) commit(postId, { status: "posted" });
+  else if (deliverId) commit(deliverId, { status: "in_review" });
   else if (addPayload) {
     try {
       const fields = JSON.parse(addPayload);
       fields.id = fields.id || (CONFIG.client + "-" + Date.now());
       fields.editorBrief = fields.editorBrief || { storyBeats: null, mustKeep: null, captionsStyle: null, musicVibe: null, ctaOverlay: null, platformSpecs: null };
-      await addVideo(fields);
+      addVideo(fields);
     } catch (e) { console.warn("bad quickAdd payload", e); }
   }
 }
 
-renderHome(); renderVideos(); renderCalendar(); renderAnalytics(); renderNews(); renderDocs();
-initRouter("home");
-runQuickActionIfAny();
+// Two logins can open a client's portal: any social_operators row (Tait,
+// any client — same posture as the operator dashboard's "Live edit"
+// button into this same page), or the social_client_users row for THIS
+// client specifically. A client_user row alone isn't enough — its
+// client_id has to resolve (via social_clients) to this portal's own
+// CONFIG.client slug, or a login for one client could open another
+// client's portal just by knowing the URL.
+async function resolveClientPortalAccess(sb, user) {
+  const { data: op } = await sb.from("social_operators").select("*").eq("id", user.id).maybeSingle();
+  if (op) return { ok: true, role: "operator", roleRow: op };
+  const { data: cu } = await sb.from("social_client_users").select("*").eq("id", user.id).maybeSingle();
+  if (!cu) return { ok: false, reason: "This login isn't set up for any client portal yet — ask the operator to add you." };
+  const { data: client } = await sb.from("social_clients").select("slug").eq("id", cu.client_id).maybeSingle();
+  if (!client || client.slug !== CONFIG.client) return { ok: false, reason: "This login belongs to a different client's portal." };
+  return { ok: true, role: "client", roleRow: cu };
+}
+
+// access.role, set by resolveClientPortalAccess above, is what IS_OPERATOR
+// now means — no separate URL flag or localStorage toggle exists anymore.
+function startApp(user, access) {
+  IS_OPERATOR = access.role === "operator";
+  wireOperatorControls();
+  renderHome(); renderVideos(); renderCalendar(); renderAnalytics(); renderNews(); renderDocs();
+  initRouter("home");
+  runQuickActionIfAny();
+}
+
+initAuthGate({ resolveAccess: resolveClientPortalAccess, onReady: startApp });
 </script>
 </body>
 </html>

@@ -5,11 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Fully Social OS — Editor Queue</title>
 <style>/*__SHELL_CSS__*/</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/supabase/config.js"></script>
 </head>
 <body>
 
+<div id="authGate"></div>
+<div id="appShell" class="hidden">
+
 <nav class="sidebar">
   <div class="brand"><span class="dot"></span> Fully Social OS</div>
+  <div class="sync-badge" id="authUserBadge"></div>
   <div class="nav-item active" data-view="queue"><span class="ic">🎞️</span> To Edit</div>
   <div class="nav-item" data-view="calendar"><span class="ic">📅</span> Calendar</div>
   <div class="nav-item" data-view="delivered"><span class="ic">📤</span> Delivered</div>
@@ -53,7 +59,10 @@
 
 </main>
 
+</div>
+
 <script>/*__SHELL_JS__*/</script>
+<script>/*__AUTH_JS__*/</script>
 <script>
 const CLIENTS = /*__CLIENTS_JSON__*/[];
 const RESOURCES = /*__RESOURCES_JSON__*/{};
@@ -176,18 +185,18 @@ function renderCalendar() {
   document.getElementById("calGrid").innerHTML = html;
 }
 
-// Live push: if this client has their own live portal, opening it with the
-// action already spelled out (buildHashState, shell.js) publishes the
-// status change there the instant it loads — the operator sees it on that
-// same client's portal without waiting for a pasted status report. This
-// dashboard can't publish into a different, separate Artifact itself; see
-// dashboards/template/README.md. Always ALSO keeps the local override
-// below, so "Delivered" and the status report still work exactly as
-// before for clients with no portalUrl yet.
+// Live push: if this client has their own portal link on file, opening it
+// with the action already spelled out (buildHashState, shell.js) applies
+// the status change there the instant it loads, in whoever's browser opens
+// it (their own operator login required — see resolveClientPortalAccess
+// in client-portal.template.html). This dashboard can't reach into that
+// separate page's own localStorage from here directly. Always ALSO keeps
+// the local override below, so "Delivered" and the status report still
+// work exactly as before for clients with no portalUrl yet.
 function quickLink(client, params) {
   if (!client || !client.portalUrl) return null;
   const base = client.portalUrl.split("#")[0].split("?")[0];
-  return base + buildHashState(Object.assign({ operator: "1" }, params));
+  return base + buildHashState(params);
 }
 
 function markDelivered(clientSlug, videoId) {
@@ -241,8 +250,22 @@ function renderDocs() {
   `).join("") : '<div class="empty">Nothing linked yet.</div>';
 }
 
-renderQueue(); renderCalendar(); renderDelivered(); renderDocs();
-initRouter("queue");
+// Either a social_operators login (Tait) or an active social_editors login
+// gets into this queue — an inactive editor (offboarded) is turned away
+// even if their old login still works.
+async function resolveEditorAccess(sb, user) {
+  const { data: op } = await sb.from("social_operators").select("*").eq("id", user.id).maybeSingle();
+  if (op) return { ok: true, role: "operator", roleRow: op };
+  const { data: ed } = await sb.from("social_editors").select("*").eq("id", user.id).maybeSingle();
+  if (!ed) return { ok: false, reason: "This login isn't set up as an editor — ask the operator to add you." };
+  if (!ed.active) return { ok: false, reason: "This editor login has been deactivated." };
+  return { ok: true, role: "editor", roleRow: ed };
+}
+
+initAuthGate({
+  resolveAccess: resolveEditorAccess,
+  onReady: () => { renderQueue(); renderCalendar(); renderDelivered(); renderDocs(); initRouter("queue"); },
+});
 </script>
 </body>
 </html>
