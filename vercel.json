@@ -1,5 +1,8 @@
 {
   "framework": null,
   "buildCommand": "python3 dashboards/build.py && mkdir -p dashboards/dist/supabase && printf 'window.SUPABASE_CONFIG = { url: \"%s\", anonKey: \"%s\" };\\n' \"$SUPABASE_URL\" \"$SUPABASE_ANON_KEY\" > dashboards/dist/supabase/config.js",
-  "outputDirectory": "dashboards/dist"
+  "outputDirectory": "dashboards/dist",
+  "redirects": [
+    { "source": "/", "destination": "/operator/dashboard.html", "permanent": false }
+  ]
 }
