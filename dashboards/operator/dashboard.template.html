@@ -58,26 +58,20 @@
   </section>
 
   <section class="view" id="view-calendar">
-    <div class="page-head"><h1>Content Calendar</h1><p>Every client's scheduled videos.</p></div>
+    <div class="page-head"><h1>Content Calendar</h1><p>Live — every client's scheduled videos, read straight from <code>social_videos</code>.</p></div>
     <div class="card"><div class="cal-grid" id="calGrid"></div></div>
   </section>
 
   <section class="view" id="view-schedule">
-    <div class="page-head"><h1>Schedule</h1><p>Every date is hand-set here — nothing auto-computes or overwrites what you type. The 7-day film-to-post gap is only ever a starting suggestion when a video is first scheduled.</p></div>
+    <div class="page-head"><h1>Schedule</h1><p>Live — reads and writes <code>social_videos</code> directly. Date edits here save immediately, no relay step. Nothing auto-computes or overwrites what you type; the 7-day film-to-post gap is only ever a starting suggestion when a video is first created.</p></div>
     <div class="card">
+      <button id="newVideoBtn" style="margin-bottom:14px">+ New video</button>
+      <div class="card" id="newVideoPanel" style="display:none;margin-bottom:14px"></div>
       <table>
         <thead><tr><th>Video</th><th>Client</th><th>Status</th><th>Due to film</th><th>Due to edit</th><th>Post date</th></tr></thead>
         <tbody id="scheduleRows"></tbody>
       </table>
       <div class="empty" id="scheduleEmpty" style="display:none">No videos scheduled yet.</div>
-    </div>
-    <div class="card">
-      <h2>Copy schedule changes</h2>
-      <p style="color:var(--sub);font-size:0.85rem;margin:0 0 12px">Date edits here update this view immediately, but this is still a browser-only view, same as everything else in this dashboard — nothing writes back to <code>config.json</code> on its own. Copy what changed and hand it to whoever's running <code>calendar-planner</code> (Claude Code) to make it permanent.</p>
-      <button class="primary" id="scheduleReportBtn">Generate changes report</button>
-      <div class="card" id="scheduleReportBox" style="display:none;margin-top:12px">
-        <textarea id="scheduleReportText" rows="6" readonly></textarea>
-      </div>
     </div>
   </section>
 
@@ -305,17 +299,6 @@ function goLivePost(clientSlug, videoId) {
   else operatorSetStatus(clientSlug, videoId, "posted");
 }
 
-// Hand-editable dates — dueToFilm, dueToEdit, postDate. Never computed or
-// overwritten automatically; the 7-day gap calendar-planner uses is only a
-// starting suggestion when a video is first scheduled.
-function operatorSetDate(clientSlug, videoId, field, value) {
-  const overrides = loadOverrides();
-  const key = clientSlug + ":" + videoId;
-  overrides[key] = Object.assign({}, overrides[key], { [field]: value || null });
-  saveOverrides(overrides);
-  renderSchedule(); renderHome(); renderCalendar();
-}
-
 function rowHtml(client, video) {
   const meta = [client.displayName, (video.platform||[]).join(" · "),
     video.dueToFilm ? "film by " + video.dueToFilm : null,
@@ -380,9 +363,27 @@ function renderHome() {
     : '<div class="empty">Everyone has enough queued up.</div>';
 }
 
-// ---------- Calendar ----------
+// ---------- Calendar + Schedule: LIVE, from social_videos -----------------
+// Unlike Content Review/Ready to Post/Home below (still config.json +
+// localStorage, unchanged), these two pages read straight from
+// social_videos — see loadLiveData(). liveFilteredVideos() applies the
+// same globalClientFilter chip everything else uses, just against live
+// data instead of CLIENTS.
+function liveFilteredVideos() {
+  return globalClientFilter === "all" ? LIVE_VIDEOS : LIVE_VIDEOS.filter(x => x.client.client === globalClientFilter);
+}
+
+// Read-only click-through — the in_review approve/revise action stays on
+// Content Review, which is unchanged and still config.json-driven this
+// round, so it isn't wired here.
+function openLiveVideoModal(videoId) {
+  const match = LIVE_VIDEOS.find(x => x.video.id === videoId);
+  if (!match) return;
+  openVideoModal(match.client, match.video, {});
+}
+
 function renderCalendar() {
-  const vids = allVideos();
+  const vids = liveFilteredVideos();
   const now = new Date();
   const first = new Date(now.getFullYear(), now.getMonth(), 1);
   const startDow = first.getDay();
@@ -402,16 +403,15 @@ function renderCalendar() {
     const items = byDay[dateStr] || [];
     const isToday = dateStr === todayISO();
     html += `<div class="cal-cell ${isToday ? "today" : ""}"><div class="daynum">${day}</div>` +
-      items.slice(0,3).map(x => `<div class="cal-chip video-card" style="background:color-mix(in srgb, var(--status-${x.video.status}) 20%, transparent); color:var(--status-${x.video.status})" title="${escapeHtml(x.video.title||x.video.id)}" onclick="openOperatorVideoModal('${escapeHtml(x.client.client)}','${escapeHtml(x.video.id)}')">${escapeHtml(x.client.displayName)}: ${escapeHtml(x.video.title||x.video.id)}</div>`).join("") +
+      items.slice(0,3).map(x => `<div class="cal-chip video-card" style="background:color-mix(in srgb, var(--status-${x.video.status}) 20%, transparent); color:var(--status-${x.video.status})" title="${escapeHtml(x.video.title||x.video.id)}" onclick="openLiveVideoModal('${escapeHtml(x.video.id)}')">${escapeHtml(x.client.displayName)}: ${escapeHtml(x.video.title||x.video.id)}</div>`).join("") +
       (items.length > 3 ? `<div class="cal-chip" style="color:var(--sub)">+${items.length-3} more</div>` : "") +
       `</div>`;
   }
   document.getElementById("calGrid").innerHTML = html;
 }
 
-// ---------- Schedule (hand-editable dates) ----------
 function renderSchedule() {
-  const vids = allVideos();
+  const vids = liveFilteredVideos();
   const tbody = document.getElementById("scheduleRows");
   document.getElementById("scheduleEmpty").style.display = vids.length ? "none" : "block";
   tbody.innerHTML = vids.map(({ client, video }) => `
@@ -419,32 +419,27 @@ function renderSchedule() {
       <td><b>${escapeHtml(video.title || video.id)}</b></td>
       <td>${escapeHtml(client.displayName)}</td>
       <td>${statusBadge(video.status, STATUS_LABEL)}</td>
-      <td>${dateInput(client.client, video.id, "dueToFilm", video.dueToFilm)}</td>
-      <td>${dateInput(client.client, video.id, "dueToEdit", video.dueToEdit)}</td>
-      <td>${dateInput(client.client, video.id, "postDate", video.postDate)}</td>
+      <td>${liveDateInput(video.id, "dueToFilm", video.dueToFilm)}</td>
+      <td>${liveDateInput(video.id, "dueToEdit", video.dueToEdit)}</td>
+      <td>${liveDateInput(video.id, "postDate", video.postDate)}</td>
     </tr>
   `).join("");
 }
-function dateInput(clientSlug, videoId, field, value) {
-  return `<input type="date" value="${value || ""}" style="font-size:0.82rem;padding:5px 6px" onchange="operatorSetDate('${clientSlug}','${videoId}','${field}', this.value)">`;
+function liveDateInput(videoId, field, value) {
+  return `<input type="date" value="${value || ""}" style="font-size:0.82rem;padding:5px 6px" onchange="liveSetDate('${videoId}','${field}', this.value)">`;
 }
-
-document.getElementById("scheduleReportBtn").onclick = () => {
-  const overrides = loadOverrides();
-  const lines = [];
-  CLIENTS.forEach(client => (client.videos || []).forEach(v0 => {
-    const o = overrides[client.client + ":" + v0.id];
-    if (!o) return;
-    ["dueToFilm", "dueToEdit", "postDate"].forEach(f => {
-      if (o[f] !== undefined && o[f] !== v0[f]) lines.push(`${client.client} | ${v0.id} | ${f} | ${o[f] || "(cleared)"}`);
-    });
-  }));
-  const now = new Date().toISOString().replace("T", " ").slice(0, 16);
-  const report = ["FULLY SOCIAL OS SCHEDULE CHANGES", "Generated: " + now, "---",
-    lines.length ? lines.join("\n") : "(no date changes yet)"].join("\n");
-  const box = document.getElementById("scheduleReportBox"), ta = document.getElementById("scheduleReportText");
-  ta.value = report; box.style.display = "block"; ta.focus(); ta.select();
-};
+// Writes straight to social_videos — no localStorage, no status-report
+// relay. Unlike the git-driven pages, there's no consumer for a report on
+// this data (calendar-planner only touches config.json), so leaving this
+// local would just be a dead end; operators already have full RLS write
+// access to social_videos, so there's nothing to route around.
+const LIVE_DATE_COLUMN = { dueToFilm: "due_to_film", dueToEdit: "due_to_edit", postDate: "post_date" };
+async function liveSetDate(videoId, field, value) {
+  const column = LIVE_DATE_COLUMN[field];
+  const { error } = await sbClient.from("social_videos").update({ [column]: value || null }).eq("id", videoId);
+  if (error) { alert("Couldn't save that date: " + error.message); }
+  await loadLiveData();
+}
 
 // ---------- Content Review ----------
 function renderReview() {
@@ -617,24 +612,56 @@ document.getElementById("pasteBtn").onclick = () => {
   renderAll();
 };
 
-// --- All Clients: CLIENTS (git config.json) merged with LIVE_CLIENTS
-// (live social_clients), deduped by slug ----------------------------------
+// --- Live data: social_clients + social_videos ----------------------------
 // Two different sources of "client" exist: CLIENTS is every
 // dashboards/clients/<slug>/config.json checked into git, baked in at
-// build time — that's still what drives Schedule/Content Review/Ready to
-// Post/Calendar, and hasn't changed. LIVE_CLIENTS is every row in
-// social_clients, fetched live — a client created with "+ New client"
-// shows up here immediately, with a working portal, whether or not
-// anyone has ever written a config.json for them. This merges the two
-// into one list by slug instead of showing them as two separate,
-// sometimes-overlapping cards.
+// build time — that's still what drives Content Review/Ready to Post/Home
+// below. LIVE_CLIENTS is every row in social_clients, LIVE_VIDEOS is every
+// row in social_videos (mapped to the client that owns it) — both fetched
+// live, both what Content Calendar/Schedule/All Clients/+New video/+New
+// client actually read and write now. A client or video created here
+// shows up immediately, whether or not anyone's written a config.json.
 let LIVE_CLIENTS = [];
+let LIVE_VIDEOS = []; // [{ client: {client, displayName, driveFolders}, video }]
 
-async function loadLiveClients() {
-  const { data, error } = await sbClient.from("social_clients").select("*").order("created_at", { ascending: false });
-  if (error) { console.warn("failed to load live clients", error); return; }
-  LIVE_CLIENTS = data || [];
+// Adapts a social_clients row into the {client, displayName, driveFolders}
+// shape rowHtml()/openVideoModal()/etc. already expect from CLIENTS —
+// driveFolders comes from the git config if this client happens to have
+// one on file, since social_drive_folder_links isn't read on this
+// dashboard (only the client portal reads it).
+function liveClientAdapter(c) {
+  const gitMatch = CLIENTS.find(cc => cc.client === c.slug);
+  return { client: c.slug, displayName: c.name, driveFolders: (gitMatch && gitMatch.driveFolders) || {} };
+}
+
+// Reshape a social_videos row into the camelCase shape every render
+// function here already expects from a config.json video — same mapping
+// client-portal.template.html uses for the same reason.
+function fromSupabaseVideoRow(row) {
+  return {
+    id: row.id, title: row.title, platform: row.platform || [], hook: row.hook,
+    overview: row.overview, body: row.body, filmingDirection: row.filming_instructions,
+    caption: row.caption, dueToFilm: row.due_to_film, dueToEdit: row.due_to_edit, postDate: row.post_date,
+    status: row.status, note: row.note, assignedEditor: null, editorBrief: row.editor_brief || {},
+  };
+}
+
+async function loadLiveData() {
+  const [clientsRes, videosRes] = await Promise.all([
+    sbClient.from("social_clients").select("*").order("created_at", { ascending: false }),
+    sbClient.from("social_videos").select("*"),
+  ]);
+  if (clientsRes.error) console.warn("failed to load live clients", clientsRes.error);
+  if (videosRes.error) console.warn("failed to load live videos", videosRes.error);
+  LIVE_CLIENTS = clientsRes.data || [];
+  const clientById = {};
+  LIVE_CLIENTS.forEach(c => { clientById[c.id] = liveClientAdapter(c); });
+  LIVE_VIDEOS = (videosRes.data || [])
+    .filter(row => clientById[row.client_id])
+    .map(row => ({ client: clientById[row.client_id], video: fromSupabaseVideoRow(row) }));
   renderAllClients();
+  renderCalendar();
+  renderSchedule();
 }
 
 function buildAllClientsList() {
@@ -750,11 +777,74 @@ function openNewClientPanel() {
       return;
     }
     panel.style.display = "none";
-    await loadLiveClients();
+    await loadLiveData();
     alert("Client created — portal is live at /clients/" + slug + " right now. Drive folder links can be added later, separately.");
   };
 }
 document.getElementById("newClientBtn").onclick = openNewClientPanel;
+
+// "+ New video" — inserts straight into social_videos (RLS: operators
+// only, "operators manage videos" in 001_social_os_schema.sql). Only
+// title/platform/status/dates — no hook/caption/filming instructions/etc.
+// here; this is for getting a video onto the schedule, not the full
+// content brief, which stays a later step.
+function openNewVideoPanel() {
+  const panel = document.getElementById("newVideoPanel");
+  const showing = panel.style.display !== "none";
+  if (showing) { panel.style.display = "none"; return; }
+  if (!LIVE_CLIENTS.length) {
+    panel.innerHTML = '<div class="empty">No live clients yet — add one on the All Clients page first.</div>';
+    panel.style.display = "block";
+    return;
+  }
+  const clientOptions = LIVE_CLIENTS.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`).join("");
+  const statusOptions = STATUS_ORDER.concat(["rejected"])
+    .map(s => `<option value="${s}" ${s === "concept_pending" ? "selected" : ""}>${escapeHtml((STATUS_LABEL && STATUS_LABEL[s]) || s)}</option>`).join("");
+  panel.innerHTML = `
+    <h2 style="font-size:1rem;margin:0 0 14px">New video</h2>
+    <label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Client</label>
+    <select id="nvClient" style="width:100%;margin-bottom:10px">${clientOptions}</select>
+    <label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Title</label>
+    <input type="text" id="nvTitle" style="width:100%;margin-bottom:10px">
+    <label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Platforms (comma-separated)</label>
+    <input type="text" id="nvPlatform" style="width:100%;margin-bottom:10px" placeholder="instagram, tiktok">
+    <label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Status</label>
+    <select id="nvStatus" style="width:100%;margin-bottom:10px">${statusOptions}</select>
+    <div class="grid-2">
+      <div><label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Due to film</label><input type="date" id="nvDueFilm" style="width:100%;margin-bottom:10px"></div>
+      <div><label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Due to edit</label><input type="date" id="nvDueEdit" style="width:100%;margin-bottom:10px"></div>
+    </div>
+    <label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Post date</label>
+    <input type="date" id="nvPostDate" style="width:100%;margin-bottom:10px">
+    <div class="auth-error" id="nvError"></div>
+    <div style="display:flex;gap:8px">
+      <button class="primary" id="nvSave">Create video</button>
+      <button id="nvCancel">Cancel</button>
+    </div>
+  `;
+  panel.style.display = "block";
+  document.getElementById("nvCancel").onclick = () => { panel.style.display = "none"; };
+  document.getElementById("nvSave").onclick = async () => {
+    const errEl = document.getElementById("nvError");
+    errEl.textContent = "";
+    const client_id = document.getElementById("nvClient").value;
+    const title = document.getElementById("nvTitle").value.trim();
+    const platform = document.getElementById("nvPlatform").value.split(",").map(s => s.trim()).filter(Boolean);
+    const status = document.getElementById("nvStatus").value;
+    const due_to_film = document.getElementById("nvDueFilm").value || null;
+    const due_to_edit = document.getElementById("nvDueEdit").value || null;
+    const post_date = document.getElementById("nvPostDate").value || null;
+    if (!title) { errEl.textContent = "Give it a title first."; return; }
+    const saveBtn = document.getElementById("nvSave");
+    saveBtn.disabled = true; saveBtn.textContent = "Creating…";
+    const { error } = await sbClient.from("social_videos").insert({ client_id, title, platform, status, due_to_film, due_to_edit, post_date });
+    saveBtn.disabled = false; saveBtn.textContent = "Create video";
+    if (error) { errEl.textContent = error.message; return; }
+    panel.style.display = "none";
+    await loadLiveData();
+  };
+}
+document.getElementById("newVideoBtn").onclick = openNewVideoPanel;
 
 function renderAll() {
   renderGlobalClientFilter();
@@ -773,7 +863,7 @@ async function resolveOperatorAccess(sb, user) {
 
 initAuthGate({
   resolveAccess: resolveOperatorAccess,
-  onReady: () => { renderAll(); initRouter("home"); loadLiveClients(); },
+  onReady: () => { renderAll(); initRouter("home"); loadLiveData(); },
 });
 </script>
 </body>
