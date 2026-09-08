@@ -53,6 +53,7 @@
     <div class="card">
       <button id="newClientBtn" style="margin-bottom:14px">+ New client</button>
       <div class="card" id="newClientPanel" style="display:none;margin-bottom:14px"></div>
+      <div class="card" id="editClientPanel" style="display:none;margin-bottom:14px"></div>
       <div id="allClientsList"></div>
     </div>
   </section>
@@ -678,6 +679,7 @@ function buildAllClientsList() {
     const existing = bySlug[c.slug];
     bySlug[c.slug] = Object.assign({}, existing, {
       slug: c.slug,
+      liveId: c.id,
       name: (existing && existing.name) || c.name,
       clientSystem: (existing && existing.clientSystem) || c.client_system,
       planStart: (existing && existing.planStart) || c.plan_window_start,
@@ -709,10 +711,16 @@ function renderAllClients() {
     const portalBtn = c.hasLivePortal
       ? `<a class="btn primary" style="margin-right:6px;font-size:0.75rem;padding:4px 9px" href="${location.origin}/clients/${encodeURIComponent(c.slug)}" target="_blank" rel="noopener">Open portal</a>`
       : `<span class="badge" style="background:rgba(239,68,68,0.15);color:var(--red)">Not live yet</span>`;
+    // Editing writes to social_clients/social_drive_folder_links, so it
+    // only makes sense for a client that actually has a live row — a
+    // config.json-only client has nothing in Supabase yet to edit.
+    const editBtn = c.hasLivePortal
+      ? `<button style="margin-right:6px;font-size:0.75rem;padding:4px 9px" onclick="openEditClientPanel('${escapeHtml(c.liveId)}')">Edit</button>`
+      : "";
     const configNote = c.inConfig ? "" : " · not in a config.json yet — Schedule/Content Review/etc. won't show it";
     return `<div class="row"><div class="left"><b>${escapeHtml(c.name)}</b>
       <div class="meta">${escapeHtml(c.slug)} · ${escapeHtml(c.clientSystem || "?")} · plan ${escapeHtml(plan)}${configNote}</div></div>
-      <div>${portalBtn}${driveLinks}</div></div>`;
+      <div>${portalBtn}${editBtn}${driveLinks}</div></div>`;
   }).join("");
 }
 
@@ -730,6 +738,7 @@ function slugify(name) {
 function openNewClientPanel() {
   const panel = document.getElementById("newClientPanel");
   const showing = panel.style.display !== "none";
+  document.getElementById("editClientPanel").style.display = "none";
   if (showing) { panel.style.display = "none"; return; }
   panel.innerHTML = `
     <h2 style="font-size:1rem;margin:0 0 14px">New client</h2>
@@ -782,6 +791,96 @@ function openNewClientPanel() {
   };
 }
 document.getElementById("newClientBtn").onclick = openNewClientPanel;
+
+// "Edit" — same visual pattern as "+ New client," pre-filled, writing
+// straight to social_clients (update) and social_drive_folder_links
+// (upsert, since a client may not have a folder-links row yet — RLS:
+// "operators manage clients" / "operators manage drive links", both
+// operator-only). Slug isn't editable here: it's the client's portal URL,
+// so changing it is a bigger, more consequential action than this form is
+// meant for — shown as context in the heading, not a field.
+const DRIVE_FOLDER_FIELDS = [
+  { key: "root", column: "root", label: "Client folder (root)" },
+  { key: "footageUploads", column: "footage_uploads", label: "Footage uploads" },
+  { key: "finalEdits", column: "final_edits", label: "Final edits" },
+  { key: "brandVoice", column: "brand_voice", label: "Brand voice" },
+  { key: "hooks", column: "hooks", label: "Hooks" },
+  { key: "assets", column: "assets", label: "Assets" },
+  { key: "customerData", column: "customer_data", label: "Customer data" },
+  { key: "contentIdeas", column: "content_ideas", label: "Content ideas" },
+];
+async function openEditClientPanel(clientId) {
+  const panel = document.getElementById("editClientPanel");
+  document.getElementById("newClientPanel").style.display = "none";
+  const alreadyShowingThis = panel.style.display !== "none" && panel.dataset.editingId === clientId;
+  if (alreadyShowingThis) { panel.style.display = "none"; return; }
+  const client = LIVE_CLIENTS.find(c => c.id === clientId);
+  if (!client) return;
+  panel.dataset.editingId = clientId;
+  panel.innerHTML = '<div class="empty">Loading…</div>';
+  panel.style.display = "block";
+
+  const { data: folderRow } = await sbClient.from("social_drive_folder_links").select("*").eq("client_id", clientId).maybeSingle();
+  const f = folderRow || {};
+  // A second click could have landed elsewhere while this loaded.
+  if (panel.dataset.editingId !== clientId) return;
+
+  panel.innerHTML = `
+    <h2 style="font-size:1rem;margin:0 0 14px">Edit ${escapeHtml(client.name)} <span style="font-weight:400;color:var(--sub);font-size:0.78rem">(${escapeHtml(client.slug)})</span></h2>
+    <label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Name</label>
+    <input type="text" id="ecName" value="${escapeHtml(client.name)}" style="width:100%;margin-bottom:10px">
+    <label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Client system</label>
+    <select id="ecSystem" style="width:100%;margin-bottom:10px">
+      <option value="self-serve" ${client.client_system === "self-serve" ? "selected" : ""}>Self-serve</option>
+      <option value="concierge" ${client.client_system === "concierge" ? "selected" : ""}>Concierge</option>
+    </select>
+    <div class="grid-2">
+      <div><label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Plan start</label><input type="date" id="ecStart" value="${client.plan_window_start || ""}" style="width:100%;margin-bottom:10px"></div>
+      <div><label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Plan end</label><input type="date" id="ecEnd" value="${client.plan_window_end || ""}" style="width:100%;margin-bottom:10px"></div>
+    </div>
+    <h2 style="font-size:0.9rem;margin:16px 0 10px">Drive folder links</h2>
+    ${DRIVE_FOLDER_FIELDS.map(d => `
+      <label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">${escapeHtml(d.label)}</label>
+      <input type="text" id="ec_${d.key}" value="${escapeHtml(f[d.column] || "")}" style="width:100%;margin-bottom:10px">
+    `).join("")}
+    <div class="auth-error" id="ecError"></div>
+    <div style="display:flex;gap:8px">
+      <button class="primary" id="ecSave">Save changes</button>
+      <button id="ecCancel">Cancel</button>
+    </div>
+  `;
+  document.getElementById("ecCancel").onclick = () => { panel.style.display = "none"; };
+  document.getElementById("ecSave").onclick = async () => {
+    const errEl = document.getElementById("ecError");
+    errEl.textContent = "";
+    const name = document.getElementById("ecName").value.trim();
+    const client_system = document.getElementById("ecSystem").value;
+    const plan_window_start = document.getElementById("ecStart").value || null;
+    const plan_window_end = document.getElementById("ecEnd").value || null;
+    if (!name) { errEl.textContent = "Name can't be empty."; return; }
+    const saveBtn = document.getElementById("ecSave");
+    saveBtn.disabled = true; saveBtn.textContent = "Saving…";
+
+    const clientRes = await sbClient.from("social_clients")
+      .update({ name, client_system, plan_window_start, plan_window_end })
+      .eq("id", clientId);
+    if (clientRes.error) {
+      saveBtn.disabled = false; saveBtn.textContent = "Save changes";
+      errEl.textContent = clientRes.error.message;
+      return;
+    }
+
+    const folderPayload = { client_id: clientId };
+    DRIVE_FOLDER_FIELDS.forEach(d => { folderPayload[d.column] = document.getElementById("ec_" + d.key).value.trim() || null; });
+    const folderRes = await sbClient.from("social_drive_folder_links").upsert(folderPayload, { onConflict: "client_id" });
+
+    saveBtn.disabled = false; saveBtn.textContent = "Save changes";
+    if (folderRes.error) { errEl.textContent = folderRes.error.message; return; }
+
+    panel.style.display = "none";
+    await loadLiveData();
+  };
+}
 
 // "+ New video" — inserts straight into social_videos (RLS: operators
 // only, "operators manage videos" in 001_social_os_schema.sql). Only
