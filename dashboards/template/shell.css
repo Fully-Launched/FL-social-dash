@@ -154,7 +154,7 @@ textarea { font:12px/1.5 ui-monospace,monospace; }
 .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
 @media (max-width:760px) { .grid-2 { grid-template-columns:1fr; } .sidebar { display:none; } }
 
-.hidden { display:none; }
+.hidden { display:none !important; }
 
 /* Auth gate — full-screen login shown until Supabase confirms a signed-in,
    authorized session; #appShell (the whole sidebar+main app) stays hidden
