@@ -555,19 +555,55 @@ Documented ahead of being built so each build step has a known destination.
 | 1 | Onboarding survey sent to new clients — platform handles (not passwords: delegated Business Manager / Creator account access per platform), brand voice/guidelines, initial content ideas, existing assets | ❌ Not built |
 | 2 | Survey data lands directly on the client's row in Supabase | ❌ Not built |
 | 3 | Operator (Tait) generates content ideas from that data, possibly AI-assisted | ❌ Not built |
-| 4 | Operator schedules content and writes filming/content instructions for the client | 🧩 Workaround — exists today via `config.json` (Schedule page) + `calendar-planner`, not live |
+| 4 | Operator schedules content and writes filming/content instructions for the client | ✅ **Live** — Content Calendar, Schedule, and "+ New video" all read/write `social_videos` directly now. Filming/content instructions specifically (`filming_instructions`, `hook`, `caption`, etc.) aren't in the creation form yet — title/platform/status/dates only — so still todo, but the record itself and the schedule are real. |
 | 5 | Client uploads requested content (self-serve) or Tait/editor films directly (concierge), per `client_system` | 🧩 Workaround — Drive deep-links + client-portal status marking, not true in-app upload |
 | 6 | Editor edits and submits for review | 🧩 Workaround — editor dashboard exists and works, but is `config.json`-driven, not live |
 | 7 | Operator approves or sends back for revisions | 🧩 Workaround — operator dashboard's Content Review exists, `config.json`-driven |
 | 8 | Client reviews, approves or requests further edits | 🧩 Workaround — client portal exists, writes to `localStorage` + status report, not live |
 | 9 | Final high-quality content downloaded/exported for posting | 🧩 Workaround — Drive deep-link + "Ready to Post," posted manually (principle 6 — stays manual by design, this one isn't a gap) |
 
-**Next concrete build: making `social_videos` live** — Content Calendar and
-Schedule reading real rows instead of `config.json`, plus a "+ New video"
-form (the same shape as "+ New client," but for a video). Everything from
-phase 1 onward depends on this: there's no live per-video record for a
-survey, an operator-generated idea, a schedule entry, or a review gate to
-attach to until videos themselves stop being a git file. The RLS policies
-for `social_videos` (per-client read/write, editor assignment + status
-gating, gate-1 concept approval) already exist and are already tested —
-this is an application-layer build, not a schema or security one.
+**`social_videos` is live now** — Content Calendar, Schedule, and "+ New
+video" all read/write it directly, under the operator RLS policy. That was
+the previous "next concrete build" note here; done.
+
+**Next concrete build: the client portal's own video reads/writes going
+live.** Only the operator side moved so far — the client portal still
+reads its video list from `config.json` and writes every status change
+(approve/reject/mark filmed/etc.) to `localStorage` + a status report, not
+`social_videos`. Phases 5, 6, and 8 above all depend on a client-side live
+record to act on, not just the operator's: a client filming their own
+footage, an editor's delivered cut, and a client's own review gate all
+need something real on the other end. This is also the point where the
+gate-1 concept-approval columns (`concept_approved_by`/`concept_approved_at`)
+start mattering — they only gate anything once a real client login can
+read `social_videos` and hit that check.
+
+## Future Considerations — not committed, from a shelved alternative spec
+
+Pulled from `FL-CRM-Social-Dash-Spec.md` (a planning doc for a different
+architecture — one merged Next.js app combining the CRM and this social
+dashboard under a single login — not pursued) before it's deleted. These
+are ideas worth keeping on file, not plans; nothing here is scheduled
+against any phase above.
+
+1. **`status_audit_log` table** — log every video status transition
+   (`from_status`, `to_status`, `changed_by`, `changed_at`). Cheap to add,
+   but only actually useful once writes are fully live in Supabase —
+   today, most status changes (phases 6–8 above) still go through
+   `localStorage` + the status report, so there'd be nothing real to log
+   yet.
+2. **Timestamped video comments** — a comment tied to a specific second
+   within a video, not the video record as a whole. Relevant once there's
+   a live operator/client review loop to attach it to (phases 7–8), not
+   before.
+3. **Onboarding trigger sequence** — on client activation, automatically
+   request three specific things: media upload, a brand/info survey, and
+   platform access. Same idea as Roadmap phase 1's onboarding survey
+   above, just a sharper framing worth keeping — three concrete asks on
+   day one, not one vague "onboarding survey."
+4. **CRM + Social Dash merge, as an alternative architecture** — the
+   shelved spec's core idea was one merged Next.js app, one login, for
+   both the CRM and this dashboard. Not pursued; this repo continues as
+   its own separate deployment, because the two-repo approach is working
+   and already live. Noted as a real decision point to revisit later —
+   not a direction anyone's committed to.
