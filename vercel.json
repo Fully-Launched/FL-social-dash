@@ -4,5 +4,9 @@
   "outputDirectory": "dashboards/dist",
   "redirects": [
     { "source": "/", "destination": "/operator/dashboard.html", "permanent": false }
+  ],
+  "rewrites": [
+    { "source": "/clients/:slug/portal.html", "destination": "/clients/portal.html" },
+    { "source": "/clients/:slug", "destination": "/clients/portal.html" }
   ]
 }

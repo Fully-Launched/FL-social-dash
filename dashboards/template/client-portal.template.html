@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>__DISPLAY_NAME__</title>
+<title>Fully Social OS — Client Portal</title>
 <style>/*__SHELL_CSS__*/</style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/supabase/config.js"></script>
@@ -14,7 +14,7 @@
 <div id="appShell" class="hidden">
 
 <nav class="sidebar">
-  <div class="brand"><span class="dot"></span> __DISPLAY_NAME__</div>
+  <div class="brand"><span class="dot"></span> <span id="brandName">Fully Social OS</span></div>
   <div class="sync-badge" id="authUserBadge"></div>
   <div class="sync-badge" id="operatorBadge" style="display:none">🔧 Operator — full edit access</div>
   <div class="nav-item active" data-view="home"><span class="ic">🏠</span> Dashboard</div>
@@ -28,12 +28,12 @@
 <main class="main">
 
   <section class="view active" id="view-home">
-    <div class="page-head"><h1>Welcome back</h1><p>Plan window: __PLAN_START__ – __PLAN_END__</p></div>
+    <div class="page-head"><h1>Welcome back</h1><p id="planWindowText">Plan window: — – —</p></div>
     <div class="stat-grid" id="homeStats"></div>
     <div class="card">
       <h2>Footage folder</h2>
       <p style="color:var(--sub);font-size:0.88rem;margin:0 0 12px">Drop finished footage here for each video below — this page never handles the files directly.</p>
-      <a class="btn primary" href="__FOOTAGE_FOLDER__" target="_blank" rel="noopener">📁 Open footage folder</a>
+      <a class="btn primary" id="footageFolderLink" href="#" target="_blank" rel="noopener">📁 Open footage folder</a>
     </div>
   </section>
 
@@ -108,13 +108,38 @@
 <script>/*__SHELL_JS__*/</script>
 <script>/*__AUTH_JS__*/</script>
 <script>
-const CONFIG = /*__CONFIG_JSON__*/null;
-const NEWS = /*__NEWS_JSON__*/[];
+// News and agency resources are agency-wide, not per-client, so they're
+// still safe to bake at build time the same for every client (build.py
+// writes this ONE template once, not once per client — see below). NEWS
+// here is the FULL unfiltered list; the per-client relevantClients filter
+// that build.py used to apply now runs at runtime in startApp(), once the
+// client's slug is known.
+const ALL_NEWS = /*__NEWS_JSON__*/[];
 const RESOURCES = /*__RESOURCES_JSON__*/{};
-const STORE_KEY = "fso_status_" + CONFIG.client;
-const EXTRA_KEY = "fso_extra_videos_" + CONFIG.client;
-const IS_SELF_SERVE = CONFIG.clientSystem !== "concierge";
+let NEWS = [];
 const EDITABLE_FIELDS = ["hook", "caption", "filmingDirection"];
+
+// This one file now serves every client — CLIENT/DRIVE_FOLDERS/LIVE_VIDEOS
+// are unknown until resolveClientPortalAccess + startApp resolve who's
+// signed in and which client's data they're allowed to see. Nothing below
+// that reads these may run before startApp sets them.
+let CLIENT = null;          // the social_clients row
+let DRIVE_FOLDERS = {};     // from social_drive_folder_links
+let LIVE_VIDEOS = [];       // from social_videos, mapped to the same shape config.json videos always had
+let ANALYTICS = [];         // not live yet this round — always empty; see renderAnalytics
+let IS_SELF_SERVE = true;
+let STORE_KEY = null;
+let EXTRA_KEY = null;
+
+// Which client this browser tab is even asking for — parsed from the URL,
+// not baked at build time, since one shared file now serves every client.
+// Matches both the clean /clients/<slug> path and the legacy
+// /clients/<slug>/portal.html shape still on file as portalUrl for
+// clients whose config.json predates this — see vercel.json's rewrites.
+function getClientSlugFromUrl() {
+  const m = location.pathname.match(/\/clients\/([^\/]+)/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
 
 // Captured once, before initRouter's first activate() call rewrites the
 // hash down to a bare view name — quick actions below read this snapshot,
@@ -133,11 +158,11 @@ function loadOverrides() { try { return JSON.parse(localStorage.getItem(STORE_KE
 function saveOverrides(o) { try { localStorage.setItem(STORE_KEY, JSON.stringify(o)); } catch (e) {} }
 function loadExtraVideos() { try { return JSON.parse(localStorage.getItem(EXTRA_KEY) || "[]"); } catch (e) { return []; } }
 function saveExtraVideos(arr) { try { localStorage.setItem(EXTRA_KEY, JSON.stringify(arr)); } catch (e) {} }
-// Every video, wherever it currently lives: published in CONFIG, or — only
-// when this device couldn't publish — a brand-new one still waiting in
-// this browser's own localStorage. Once a publish succeeds the new video
-// is in CONFIG for everyone and the local copy is cleared.
-function allVideos() { return CONFIG.videos.concat(loadExtraVideos()); }
+// Every video, wherever it currently lives: fetched live from social_videos,
+// or — a brand-new one added from this portal, which still only exists in
+// this browser's own localStorage since writes stay local for now (see
+// commit()/addVideo() below).
+function allVideos() { return LIVE_VIDEOS.concat(loadExtraVideos()); }
 function effectiveStatus(video, overrides) { const o = overrides[video.id]; return o && o.status ? o.status : video.status; }
 function effectiveNote(video, overrides) { const o = overrides[video.id]; return o && o.note != null ? o.note : video.note; }
 function effectiveVideo(video, overrides) {
@@ -194,7 +219,7 @@ function videoCard(video0, status, overrides, opts) {
     ${video.note ? `<div class="meta" style="margin-top:8px">Note: ${escapeHtml(video.note)}</div>` : ""}
     <div class="edit-panel" data-edit-panel style="display:none;margin-top:12px"></div>
     <div class="actions" style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
-      ${(CONFIG.driveFolders || {}).footageUploads ? `<a class="btn" href="${CONFIG.driveFolders.footageUploads}" target="_blank" rel="noopener">📁 Drop footage here</a>` : ""}
+      ${DRIVE_FOLDERS.footageUploads ? `<a class="btn" href="${DRIVE_FOLDERS.footageUploads}" target="_blank" rel="noopener">📁 Drop footage here</a>` : ""}
       ${IS_OPERATOR ? `<button data-edit-toggle>✏️ Edit</button>` : ""}
     </div>
   `;
@@ -309,7 +334,7 @@ function openClientVideoModal(videoId) {
     actionsHtml = `<button class="primary" onclick="setStatus('${videoId}','ready_to_post');closeVideoModal()">Approve — ready to post</button>
       <button class="reject" onclick="requestChange('${videoId}','with_editor');closeVideoModal()">Request revisions</button>`;
   }
-  openVideoModal(CONFIG, video, { actionsHtml, linkKeys: ["footageUploads"], hideEditorBrief: true });
+  openVideoModal({ displayName: CLIENT.name, driveFolders: DRIVE_FOLDERS }, video, { actionsHtml, linkKeys: ["footageUploads"], hideEditorBrief: true });
 }
 
 function renderVideos() {
@@ -384,7 +409,7 @@ document.getElementById("reportBtn").onclick = () => {
     }
   });
   const now = new Date().toISOString().replace("T", " ").slice(0, 16);
-  const report = ["FULLY SOCIAL OS STATUS REPORT", "Client: " + CONFIG.client, "Generated: " + now, "---",
+  const report = ["FULLY SOCIAL OS STATUS REPORT", "Client: " + CLIENT.slug, "Generated: " + now, "---",
     lines.length ? lines.join("\n") : "(no changes since last sync)"].join("\n");
   const box = document.getElementById("reportBox"), ta = document.getElementById("reportText");
   ta.value = report; box.style.display = "block"; ta.focus(); ta.select();
@@ -413,7 +438,7 @@ function wireOperatorControls() {
     panel.querySelector("[data-save]").onclick = () => {
       const fields = readFieldsForm(panel);
       if (!fields.title) { alert("Give it a title first."); return; }
-      fields.id = CONFIG.client + "-" + Date.now();
+      fields.id = CLIENT.slug + "-" + Date.now();
       fields.note = fields.note || null;
       fields.assignedEditor = fields.assignedEditor || null;
       fields.editorBrief = { storyBeats: null, mustKeep: null, captionsStyle: null, musicVibe: null, ctaOverlay: null, platformSpecs: null };
@@ -449,7 +474,7 @@ function renderCalendar() {
 }
 
 function renderAnalytics() {
-  const rows = CONFIG.analytics || [];
+  const rows = ANALYTICS; // not sourced live yet — always empty; see the ANALYTICS declaration above
   const byPlatform = {};
   rows.forEach(r => { (byPlatform[r.platform] = byPlatform[r.platform] || []).push(r); });
   Object.values(byPlatform).forEach(arr => arr.sort((a,b) => a.date.localeCompare(b.date)));
@@ -488,24 +513,27 @@ function renderNews() {
 
 // My Videos tabs: "To Film" (concept approval through filming, plus a
 // read-only look at what's with the editor) vs. "Ready to Approve" (the
-// final review gate, plus history). Wired once — renderVideos() only
-// touches content, not which tab is showing.
-document.querySelectorAll('.chip[data-tab]').forEach(chip => {
-  chip.onclick = () => {
-    document.querySelectorAll('.chip[data-tab]').forEach(c => c.classList.remove("active"));
-    chip.classList.add("active");
-    document.getElementById("tabFilm").style.display = chip.dataset.tab === "film" ? "" : "none";
-    document.getElementById("tabApprove").style.display = chip.dataset.tab === "approve" ? "" : "none";
-  };
-});
-if (!IS_SELF_SERVE) {
-  // Concierge clients never approve a concept or film anything themselves —
-  // land them on the tab that actually has something to do.
-  document.querySelector('.chip[data-tab="approve"]').click();
+// final review gate, plus history). Wired once from startApp(), after
+// IS_SELF_SERVE is known — renderVideos() only touches content after that,
+// not which tab is showing.
+function wireVideoTabs() {
+  document.querySelectorAll('.chip[data-tab]').forEach(chip => {
+    chip.onclick = () => {
+      document.querySelectorAll('.chip[data-tab]').forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
+      document.getElementById("tabFilm").style.display = chip.dataset.tab === "film" ? "" : "none";
+      document.getElementById("tabApprove").style.display = chip.dataset.tab === "approve" ? "" : "none";
+    };
+  });
+  if (!IS_SELF_SERVE) {
+    // Concierge clients never approve a concept or film anything themselves —
+    // land them on the tab that actually has something to do.
+    document.querySelector('.chip[data-tab="approve"]').click();
+  }
 }
 
 function renderDocs() {
-  const f = CONFIG.driveFolders || {};
+  const f = DRIVE_FOLDERS;
   const docs = [
     { label: "Customer Data", desc: "Pains, dreams, fears, goals — what your customers actually think.", url: f.customerData },
     { label: "Voice", desc: "Your voice profile — how you sound, your words, your story.", url: f.brandVoice },
@@ -546,35 +574,102 @@ function runQuickActionIfAny() {
   else if (addPayload) {
     try {
       const fields = JSON.parse(addPayload);
-      fields.id = fields.id || (CONFIG.client + "-" + Date.now());
+      fields.id = fields.id || (CLIENT.slug + "-" + Date.now());
       fields.editorBrief = fields.editorBrief || { storyBeats: null, mustKeep: null, captionsStyle: null, musicVibe: null, ctaOverlay: null, platformSpecs: null };
       addVideo(fields);
     } catch (e) { console.warn("bad quickAdd payload", e); }
   }
 }
 
-// Two logins can open a client's portal: any social_operators row (Tait,
-// any client — same posture as the operator dashboard's "Live edit"
-// button into this same page), or the social_client_users row for THIS
-// client specifically. A client_user row alone isn't enough — its
-// client_id has to resolve (via social_clients) to this portal's own
-// CONFIG.client slug, or a login for one client could open another
-// client's portal just by knowing the URL.
+// One shared file now serves every client, so "which client" comes from
+// the URL (getClientSlugFromUrl), not a build-time constant. Two logins
+// can open a portal once we know that slug: any social_operators row
+// (Tait, any client — same posture as the operator dashboard's "Live
+// edit" button into this same page), or the social_client_users row for
+// THIS client specifically.
+//
+// The social_clients-by-slug lookup below does double duty as both the
+// access check and the data fetch, and it's RLS itself — not this
+// function's logic — that actually enforces cross-client isolation: a
+// client_user's row only comes back if its id matches
+// social_current_client_id() for the signed-in user (see
+// supabase/migrations/001_social_os_schema.sql), so a client whose own
+// client_id differs from this slug gets `client: null` back no matter
+// what slug they type into the URL. The social_client_users lookup below
+// only exists to tell those two failure cases apart in the message shown
+// — it isn't what's keeping the data safe.
 async function resolveClientPortalAccess(sb, user) {
+  const slug = getClientSlugFromUrl();
+  if (!slug) return { ok: false, reason: "No client specified in this URL." };
+
   const { data: op } = await sb.from("social_operators").select("*").eq("id", user.id).maybeSingle();
-  if (op) return { ok: true, role: "operator", roleRow: op };
+  const { data: client } = await sb.from("social_clients").select("*").eq("slug", slug).maybeSingle();
+  if (client) return { ok: true, role: op ? "operator" : "client", client };
+
+  if (op) return { ok: false, reason: "No client found for this URL." };
   const { data: cu } = await sb.from("social_client_users").select("*").eq("id", user.id).maybeSingle();
   if (!cu) return { ok: false, reason: "This login isn't set up for any client portal yet — ask the operator to add you." };
-  const { data: client } = await sb.from("social_clients").select("slug").eq("id", cu.client_id).maybeSingle();
-  if (!client || client.slug !== CONFIG.client) return { ok: false, reason: "This login belongs to a different client's portal." };
-  return { ok: true, role: "client", roleRow: cu };
+  return { ok: false, reason: "This login belongs to a different client's portal." };
+}
+
+// Reshape a social_videos row into the same camelCase shape config.json
+// videos always had, so every render/edit function above this point can
+// stay exactly as it was. assignedEditor comes back null — the live
+// column is a real editor_id FK, not a name, and nothing in this portal
+// (client-facing, editor brief always hidden) needs to resolve it to one.
+function fromSupabaseVideo(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    platform: row.platform || [],
+    hook: row.hook,
+    overview: row.overview,
+    body: row.body,
+    filmingDirection: row.filming_instructions,
+    caption: row.caption,
+    dueToFilm: row.due_to_film,
+    dueToEdit: row.due_to_edit,
+    postDate: row.post_date,
+    status: row.status,
+    note: row.note,
+    assignedEditor: null,
+    editorBrief: row.editor_brief || {},
+  };
 }
 
 // access.role, set by resolveClientPortalAccess above, is what IS_OPERATOR
 // now means — no separate URL flag or localStorage toggle exists anymore.
-function startApp(user, access) {
+// access.client is the social_clients row the access check already fetched
+// — everything else this portal shows (videos, drive links) is fetched
+// here, once, before the first render.
+async function startApp(user, access) {
+  CLIENT = access.client;
   IS_OPERATOR = access.role === "operator";
+  IS_SELF_SERVE = CLIENT.client_system !== "concierge";
+  STORE_KEY = "fso_status_" + CLIENT.slug;
+  EXTRA_KEY = "fso_extra_videos_" + CLIENT.slug;
+
+  document.title = CLIENT.name;
+  document.getElementById("brandName").textContent = CLIENT.name;
+  document.getElementById("planWindowText").textContent =
+    "Plan window: " + (CLIENT.plan_window_start || "?") + " – " + (CLIENT.plan_window_end || "?");
+
+  const [{ data: videoRows }, { data: folderRow }] = await Promise.all([
+    sbClient.from("social_videos").select("*").eq("client_id", CLIENT.id),
+    sbClient.from("social_drive_folder_links").select("*").eq("client_id", CLIENT.id).maybeSingle(),
+  ]);
+  LIVE_VIDEOS = (videoRows || []).map(fromSupabaseVideo);
+  DRIVE_FOLDERS = folderRow ? {
+    root: folderRow.root, footageUploads: folderRow.footage_uploads, finalEdits: folderRow.final_edits,
+    brandVoice: folderRow.brand_voice, hooks: folderRow.hooks, assets: folderRow.assets,
+    customerData: folderRow.customer_data, contentIdeas: folderRow.content_ideas,
+  } : {};
+  document.getElementById("footageFolderLink").href = DRIVE_FOLDERS.footageUploads || "#";
+
+  NEWS = ALL_NEWS.filter(item => !item.relevantClients || !item.relevantClients.length || item.relevantClients.indexOf(CLIENT.slug) !== -1);
+
   wireOperatorControls();
+  wireVideoTabs();
   renderHome(); renderVideos(); renderCalendar(); renderAnalytics(); renderNews(); renderDocs();
   initRouter("home");
   runQuickActionIfAny();

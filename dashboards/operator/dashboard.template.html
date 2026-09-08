@@ -44,6 +44,14 @@
       <h2>Clients</h2>
       <div id="clientsList"></div>
     </div>
+    <div class="card">
+      <h2>All clients (live)
+        <span style="font-weight:400;color:var(--sub);font-size:0.78rem">— every social_clients row; this is what actually has a working portal right now</span>
+      </h2>
+      <button id="newClientBtn" style="margin-bottom:14px">+ New client</button>
+      <div class="card" id="newClientPanel" style="display:none;margin-bottom:14px"></div>
+      <div id="liveClientsList"></div>
+    </div>
   </section>
 
   <section class="view" id="view-calendar">
@@ -611,6 +619,106 @@ document.getElementById("pasteBtn").onclick = () => {
   renderAll();
 };
 
+// --- Live clients (social_clients) ---------------------------------------
+// Separate from CLIENTS above on purpose: CLIENTS is every client with a
+// dashboards/clients/<slug>/config.json checked into git, baked in at
+// build time — that's still what drives every other page on this
+// dashboard (Schedule, Content Review, Competitor Tracker, etc.), and
+// hasn't changed. LIVE_CLIENTS is every row in social_clients, fetched
+// live — a client created here with "+ New client" shows up here
+// immediately, with a working portal, whether or not anyone has ever
+// written a config.json for them. The two lists only overlap once someone
+// (calendar-planner, by hand) adds that client's config.json too.
+let LIVE_CLIENTS = [];
+
+async function loadLiveClients() {
+  const { data, error } = await sbClient.from("social_clients").select("*").order("created_at", { ascending: false });
+  if (error) { console.warn("failed to load live clients", error); return; }
+  LIVE_CLIENTS = data || [];
+  renderLiveClients();
+}
+
+function renderLiveClients() {
+  const el = document.getElementById("liveClientsList");
+  if (!el) return;
+  if (!LIVE_CLIENTS.length) { el.innerHTML = '<div class="empty">No clients yet — add one above.</div>'; return; }
+  el.innerHTML = LIVE_CLIENTS.map(c => {
+    const wired = CLIENTS.some(cc => cc.client === c.slug);
+    const url = location.origin + "/clients/" + encodeURIComponent(c.slug);
+    const plan = (c.plan_window_start || "?") + " – " + (c.plan_window_end || "?");
+    return `<div class="row"><div class="left"><b>${escapeHtml(c.name)}</b>
+      <div class="meta">${escapeHtml(c.slug)} · ${escapeHtml(c.client_system)} · plan ${escapeHtml(plan)}${wired ? "" : " · not yet in a config.json — Schedule/Content Review/etc. won't show it until calendar-planner adds one"}</div></div>
+      <a class="btn primary" href="${url}" target="_blank" rel="noopener">Open portal</a></div>`;
+  }).join("");
+}
+
+// "+ New client" — inserts straight into social_clients (RLS: operators
+// only, "operators manage clients" in 001_social_os_schema.sql). Drive
+// folder links are deliberately NOT part of this form — per CLAUDE.md this
+// repo never creates the actual Drive folders, so those links don't exist
+// yet at the moment a client is created either way, and the portal
+// already renders fine without them (every driveFolders read already
+// guards for a missing link). Add them later, directly in Supabase, once
+// the real folder's been made.
+function slugify(name) {
+  return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+function openNewClientPanel() {
+  const panel = document.getElementById("newClientPanel");
+  const showing = panel.style.display !== "none";
+  if (showing) { panel.style.display = "none"; return; }
+  panel.innerHTML = `
+    <h2 style="font-size:1rem;margin:0 0 14px">New client</h2>
+    <label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Name</label>
+    <input type="text" id="ncName" style="width:100%;margin-bottom:10px">
+    <label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Slug (URL-safe, unique — this becomes /clients/&lt;slug&gt;)</label>
+    <input type="text" id="ncSlug" style="width:100%;margin-bottom:10px">
+    <label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Client system</label>
+    <select id="ncSystem" style="width:100%;margin-bottom:10px">
+      <option value="self-serve">Self-serve</option>
+      <option value="concierge">Concierge</option>
+    </select>
+    <div class="grid-2">
+      <div><label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Plan start</label><input type="date" id="ncStart" style="width:100%;margin-bottom:10px"></div>
+      <div><label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Plan end</label><input type="date" id="ncEnd" style="width:100%;margin-bottom:10px"></div>
+    </div>
+    <div class="auth-error" id="ncError"></div>
+    <div style="display:flex;gap:8px">
+      <button class="primary" id="ncSave">Create client</button>
+      <button id="ncCancel">Cancel</button>
+    </div>
+  `;
+  panel.style.display = "block";
+  const nameEl = document.getElementById("ncName"), slugEl = document.getElementById("ncSlug");
+  let slugTouched = false;
+  slugEl.addEventListener("input", () => { slugTouched = true; });
+  nameEl.addEventListener("input", () => { if (!slugTouched) slugEl.value = slugify(nameEl.value); });
+  document.getElementById("ncCancel").onclick = () => { panel.style.display = "none"; };
+  document.getElementById("ncSave").onclick = async () => {
+    const errEl = document.getElementById("ncError");
+    errEl.textContent = "";
+    const name = nameEl.value.trim();
+    const slug = slugEl.value.trim();
+    const client_system = document.getElementById("ncSystem").value;
+    const plan_window_start = document.getElementById("ncStart").value || null;
+    const plan_window_end = document.getElementById("ncEnd").value || null;
+    if (!name || !slug) { errEl.textContent = "Name and slug are both required."; return; }
+    if (!/^[a-z0-9-]+$/.test(slug)) { errEl.textContent = "Slug can only contain lowercase letters, digits, and hyphens."; return; }
+    const saveBtn = document.getElementById("ncSave");
+    saveBtn.disabled = true; saveBtn.textContent = "Creating…";
+    const { error } = await sbClient.from("social_clients").insert({ name, slug, client_system, plan_window_start, plan_window_end });
+    saveBtn.disabled = false; saveBtn.textContent = "Create client";
+    if (error) {
+      errEl.textContent = error.code === "23505" ? "That slug is already taken — pick another." : error.message;
+      return;
+    }
+    panel.style.display = "none";
+    await loadLiveClients();
+    alert("Client created — portal is live at /clients/" + slug + " right now. Drive folder links can be added later, separately.");
+  };
+}
+document.getElementById("newClientBtn").onclick = openNewClientPanel;
+
 function renderAll() {
   renderGlobalClientFilter();
   renderHome(); renderCalendar(); renderSchedule(); renderReview(); renderPost(); renderCompetitors(); renderAnalytics(); renderNews();
@@ -627,7 +735,7 @@ async function resolveOperatorAccess(sb, user) {
 
 initAuthGate({
   resolveAccess: resolveOperatorAccess,
-  onReady: () => { renderAll(); initRouter("home"); },
+  onReady: () => { renderAll(); initRouter("home"); loadLiveClients(); },
 });
 </script>
 </body>

@@ -2,7 +2,7 @@
   "client": "test-fully-launched",
   "displayName": "Fully Launched",
   "clientSystem": "self-serve",
-  "portalUrl": "http://localhost:8000/dashboards/clients/test-fully-launched/portal.html",
+  "portalUrl": "/clients/test-fully-launched",
   "planWindow": { "start": "2026-08-01", "end": "2026-08-31" },
   "driveFolders": {
     "root": "https://drive.google.com/drive/folders/1X6CJurBCvH7N3fRQJ69uPuC0g4IlOD8z",
