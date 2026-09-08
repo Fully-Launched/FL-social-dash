@@ -11,6 +11,7 @@
   --status-ready_to_post:#22c55e; --status-posted:#6e6e69;
 }
 * { box-sizing:border-box; }
+html { color-scheme: dark; }
 html, body { height:100%; }
 body {
   margin:0; background:var(--bg); color:var(--ink);
@@ -148,8 +149,18 @@ button, .btn { font:inherit; font-size:0.85rem; padding:8px 15px; border-radius:
 button.primary, .btn.primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:600; }
 button.reject { color:var(--red); }
 a.btn { text-decoration:none; display:inline-block; }
-textarea, input[type=text], input[type=email], input[type=password] { width:100%; font:inherit; padding:10px 12px; border-radius:9px; border:1px solid var(--border); background:var(--bg); color:var(--ink); }
+textarea, input[type=text], input[type=email], input[type=password], input[type=date], select {
+  width:100%; font:inherit; padding:10px 12px; border-radius:9px; border:1px solid var(--border);
+  background:var(--bg); color:var(--ink);
+}
 textarea { font:12px/1.5 ui-monospace,monospace; }
+select { cursor:pointer; }
+textarea:focus, input[type=text]:focus, input[type=email]:focus, input[type=password]:focus, input[type=date]:focus, select:focus {
+  outline:none; border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+/* The native calendar-picker icon defaults to dark-on-transparent, which
+   disappears against this dark background — flip it to match. */
+input[type=date]::-webkit-calendar-picker-indicator { filter:invert(1); cursor:pointer; }
 
 .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
 @media (max-width:760px) { .grid-2 { grid-template-columns:1fr; } .sidebar { display:none; } }
