@@ -107,8 +107,9 @@ that's status, not instructions.
 
 ## The three review gates
 
-The full pipeline (`SYSTEM-BLUEPRINT.md` has the complete version) has three
-human approval gates, not two. Two are the client's, one is the owner's:
+The full pipeline (`CLAUDE.md`'s Build Spec section has the complete
+version) has three human approval gates, not two. Two are the client's, one
+is the owner's:
 
 1. **Concept gate (client's)** — `self-serve` clients only. Before filming,
    the client sees the concept + filming instructions and approves,
