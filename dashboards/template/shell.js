@@ -1,5 +1,6 @@
-// Shared helpers for both dashboards. Inlined by build.py — keep this
-// framework-free and dependency-free (no CDN, no bundler).
+// Shared helpers for all three dashboards (client portal, operator,
+// editor). Inlined by build.py — keep this framework-free and
+// dependency-free (no CDN, no bundler).
 
 function escapeHtml(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
@@ -12,56 +13,47 @@ function fmtNum(n) {
   return String(n);
 }
 
-function todayISO() { return new Date().toISOString().slice(0, 10); }
-
-// URL-safe base64, used to hand a small JSON payload (a new video's fields)
-// from the operator dashboard to a specific client's own live portal as a
-// one-shot query param — see the "quick action" links in both templates.
-function base64UrlEncode(str) {
-  return btoa(unescape(encodeURIComponent(str))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+// YYYY-MM-DD in the viewer's own time zone. toISOString() is UTC, which
+// puts "today" a day ahead in the evening (US) or a day behind in the
+// morning (east of UTC) — every date in this system is a plain local date.
+function localISODate(d) {
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
 }
-function base64UrlDecode(str) {
-  str = str.replace(/-/g, "+").replace(/_/g, "/");
-  while (str.length % 4) str += "=";
-  return decodeURIComponent(escape(atob(str)));
+function todayISO() { return localISODate(new Date()); }
+function addDaysISO(iso, days) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return localISODate(new Date(y, m - 1, d + days));
 }
 
-const PLATFORM_COLOR = {
-  instagram: "var(--instagram)", facebook: "var(--facebook)",
-  twitter: "var(--twitter)", "twitter/x": "var(--twitter)", x: "var(--twitter)",
-  linkedin: "var(--linkedin)", tiktok: "var(--tiktok)"
-};
-function platformColor(p) { return PLATFORM_COLOR[String(p || "").toLowerCase()] || "var(--sub)"; }
-
-// Hash format is plain "#<view>" for normal navigation (unchanged), or
-// "#s_<base64url JSON>" when a link needs to hand this page one-shot data
-// — quick actions (see client-portal.template.html). Kept as an opaque
-// token rather than plain "?foo=bar" query params mainly so a
-// JSON-stringified quickAdd payload (a whole new video's fields) doesn't
-// need per-field query-string encoding. initRouter only ever looks at the
-// <view> part; read parseHashParams() yourself for <params>, and do it
-// before initRouter's first activate() call, which immediately overwrites
-// the hash with just the view name.
-function parseHashParams() {
-  const raw = window.location.hash.replace(/^#/, "");
-  if (raw.startsWith("s_")) {
-    try {
-      const state = JSON.parse(base64UrlDecode(raw.slice(2)));
-      const params = new URLSearchParams();
-      Object.entries(state).forEach(([k, v]) => { if (v != null && k !== "view") params.set(k, v); });
-      return { view: state.view || "", params };
-    } catch (e) { /* malformed token — fall through as if it were a plain view name */ }
+// Month grid shared by every page's calendar. byDay: { "YYYY-MM-DD": [item] },
+// chipHtml(item) renders one entry. state.offset is months from the current
+// one; the ‹ › buttons change it and call rerender().
+function renderMonthCalendar(container, byDay, chipHtml, state, rerender) {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth() + (state.offset || 0), 1);
+  const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+  const title = first.toLocaleString(undefined, { month: "long", year: "numeric" });
+  let html = `<div style="grid-column:1/-1;display:flex;align-items:center;gap:10px;margin-bottom:6px">
+      <button data-cal="-1">‹</button><b style="min-width:150px;text-align:center">${escapeHtml(title)}</b><button data-cal="1">›</button>
+      ${state.offset ? `<button data-cal="0">Today</button>` : ""}
+    </div>`;
+  html += ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => `<div class="cal-dow">${d}</div>`).join("");
+  for (let i = 0; i < first.getDay(); i++) html += `<div></div>`;
+  const today = todayISO();
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = localISODate(new Date(first.getFullYear(), first.getMonth(), day));
+    const items = byDay[dateStr] || [];
+    html += `<div class="cal-cell ${dateStr === today ? "today" : ""}"><div class="daynum">${day}</div>${items.map(chipHtml).join("")}</div>`;
   }
-  return { view: raw, params: new URLSearchParams() };
-}
-// The encoding side of the above — build a link that hands a specific
-// artifact one-shot state via its hash. `state.view` (optional) is which
-// page to land on; everything else becomes a `parseHashParams().params`
-// entry the receiving page reads by key.
-function buildHashState(state) {
-  return "#s_" + base64UrlEncode(JSON.stringify(state));
+  container.innerHTML = html;
+  container.querySelectorAll("[data-cal]").forEach(b => b.onclick = () => {
+    const step = Number(b.dataset.cal);
+    state.offset = step === 0 ? 0 : (state.offset || 0) + step;
+    rerender();
+  });
 }
 
+// Sidebar view routing uses the plain URL hash: "#<view>".
 // Sidebar view router: nav items carry data-view="<id>"; sections carry
 // class="view" id="view-<id>". Call initRouter() once per page after render.
 function initRouter(defaultView) {
@@ -74,7 +66,7 @@ function initRouter(defaultView) {
     window.location.hash = view;
   }
   items.forEach(i => i.addEventListener("click", () => activate(i.dataset.view)));
-  const fromHash = parseHashParams().view;
+  const fromHash = window.location.hash.replace(/^#/, "");
   activate(fromHash && document.getElementById("view-" + fromHash) ? fromHash : defaultView);
   return activate;
 }
@@ -116,7 +108,7 @@ function statusBadge(status, labelMap) {
 }
 
 const STATUS_LABEL = {
-  concept_pending: "Concept: awaiting client", to_film: "To film", filmed: "Filmed",
+  concept_pending: "Concept", to_film: "To film", filmed: "Filmed",
   ready_to_edit: "Ready to edit", rejected: "Rejected", with_editor: "With editor",
   in_review: "In review (owner)", client_review: "Final review (client)",
   ready_to_post: "Ready to post", posted: "Posted"
@@ -127,6 +119,90 @@ const STATUS_LABEL = {
 // Tait films the interview himself, so there's no client-facing pre-film
 // approval step. Both systems share every stage from "filmed" onward.
 const STATUS_ORDER = ["concept_pending","to_film","filmed","ready_to_edit","with_editor","in_review","client_review","ready_to_post","posted"];
+
+// ---------- social_videos <-> page shape ----------
+// social_videos is the single source of truth for every video. Pages work
+// with the camelCase shape below; VIDEO_COLUMNS is the one mapping between
+// the two, used in both directions so reads and writes can't drift apart.
+const VIDEO_COLUMNS = {
+  id: "id", clientId: "client_id", title: "title", platform: "platform",
+  hook: "hook", overview: "overview", body: "body", concept: "concept",
+  filmingDirection: "filming_instructions", caption: "caption", note: "note",
+  status: "status", editorId: "editor_id", editorBrief: "editor_brief",
+  dueToFilm: "due_to_film", dueToEdit: "due_to_edit", postDate: "post_date",
+  conceptApprovedBy: "concept_approved_by", conceptApprovedAt: "concept_approved_at",
+  createdAt: "created_at", updatedAt: "updated_at",
+};
+// Columns a page may write directly. Only operators have direct write
+// access (RLS); clients and editors go through VIDEO_ACTIONS below.
+// Gate-1 columns are deliberately absent — use the approve_concept action,
+// so every approval is stamped and logged.
+const VIDEO_WRITABLE = ["clientId","title","platform","hook","overview","body","concept",
+  "filmingDirection","caption","note","status","editorId","editorBrief","dueToFilm","dueToEdit","postDate"];
+
+function videoFromRow(row) {
+  const v = {};
+  Object.entries(VIDEO_COLUMNS).forEach(([key, col]) => { v[key] = row[col] === undefined ? null : row[col]; });
+  v.platform = v.platform || [];
+  v.editorBrief = v.editorBrief || {};
+  v.assignedEditor = null; // display name — resolved from editorId by pages that load social_editors
+  return v;
+}
+// Only keys present in `fields` are included, so a partial patch stays
+// partial. Empty strings become null (blank form field = cleared).
+function videoFieldsToRow(fields) {
+  const row = {};
+  VIDEO_WRITABLE.forEach(key => {
+    if (!(key in fields)) return;
+    const val = fields[key];
+    row[VIDEO_COLUMNS[key]] = val === "" ? null : val;
+  });
+  return row;
+}
+
+// ---------- status changes ----------
+// Mirrors the transition table in
+// supabase/migrations/003_social_videos_write_path.sql — the database is
+// what actually enforces these; this only decides which buttons to show.
+// Keep the two in step. Operators move every other status by writing
+// `status` directly (full RLS access), so only their gate-1 action is here.
+const VIDEO_ACTIONS = {
+  approve_concept_owner:   { role: "operator", rpc: "social_operator_approve_concept", from: ["concept_pending"], to: "concept_pending", label: "Approve concept", needsConceptUnapproved: true },
+  approve_concept:         { role: "client", from: ["concept_pending"], to: "to_film",         label: "Approve", selfServeOnly: true },
+  request_concept_changes: { role: "client", from: ["concept_pending"], to: "concept_pending", label: "Request changes", selfServeOnly: true, needsNote: true, notePrompt: "What needs to change?" },
+  reject:                  { role: "client", from: ["concept_pending","to_film"], to: "rejected", label: "Deny", selfServeOnly: true, needsNote: true, notePrompt: "Why is this one being denied?", destructive: true },
+  mark_filmed:             { role: "client", from: ["to_film"],       to: "filmed",        label: "Mark filmed", selfServeOnly: true },
+  mark_ready_to_edit:      { role: "client", from: ["filmed"],        to: "ready_to_edit", label: "Mark ready to edit", selfServeOnly: true },
+  approve_final:           { role: "client", from: ["client_review"], to: "ready_to_post", label: "Approve — ready to post" },
+  request_revisions:       { role: "client", from: ["client_review"], to: "with_editor",   label: "Request revisions", needsNote: true, notePrompt: "What needs to change?", destructive: true },
+  mark_delivered:          { role: "editor", rpc: "social_editor_mark_delivered", from: ["with_editor"], to: "in_review", label: "Mark delivered" },
+};
+
+// Action keys `role` may take on `video` right now. clientSystem is the
+// social_clients.client_system of the video's client.
+function videoActionsFor(video, role, clientSystem) {
+  return Object.keys(VIDEO_ACTIONS).filter(key => {
+    const a = VIDEO_ACTIONS[key];
+    if (a.role !== role || !a.from.includes(video.status)) return false;
+    if (a.selfServeOnly && clientSystem !== "self-serve") return false;
+    if (a.needsConceptUnapproved && video.conceptApprovedAt) return false;
+    return true;
+  });
+}
+
+// Runs one action against Supabase (sbClient comes from auth.js). Resolves
+// to { video } with the updated record, or { error } with the database's
+// message — the database re-checks everything, so a refused move comes back
+// here as an error rather than silently doing nothing.
+async function runVideoAction(actionKey, videoId, note) {
+  const a = VIDEO_ACTIONS[actionKey];
+  if (!a) return { error: "Unknown action: " + actionKey };
+  const { data, error } = a.rpc
+    ? await sbClient.rpc(a.rpc, { p_video_id: videoId })
+    : await sbClient.rpc("social_client_video_action", { p_video_id: videoId, p_action: actionKey, p_note: note || null });
+  if (error) return { error: error.message };
+  return { video: videoFromRow(data) };
+}
 
 // ---------- Video detail modal ----------
 // The "Airtable, but every row is a video card" piece: one shared detail
@@ -149,12 +225,20 @@ function closeVideoModal() {
   const root = document.getElementById("videoModalRoot");
   if (root) root.classList.add("hidden");
 }
+// Any content in the same modal (the operator's video form uses this).
+// Returns the box so the caller can wire up what it rendered.
+function openModal(html) {
+  ensureModalRoot();
+  const box = document.getElementById("videoModalBox");
+  box.innerHTML = `<div class="modal-close" onclick="closeVideoModal()">✕</div>` + html;
+  document.getElementById("videoModalRoot").classList.remove("hidden");
+  return box;
+}
 function modalField(label, value) {
   if (!value) return "";
   return `<div class="modal-field"><b>${escapeHtml(label)}</b><div>${escapeHtml(value)}</div></div>`;
 }
-// client: { displayName, driveFolders } — either a full client config or
-// something shaped like one. video: the effective (override-merged) video.
+// client: { displayName, driveFolders }. video: a videoFromRow() record.
 // opts.actionsHtml: buttons rendered at the bottom, audience-specific.
 // opts.linkKeys: which driveFolders entries to show as quick links (default: all present).
 // opts.hideEditorBrief: true for the client portal — editing instructions
@@ -165,7 +249,7 @@ function openVideoModal(client, video, opts) {
   ensureModalRoot();
   const f = client.driveFolders || {};
   const linkKeys = opts.linkKeys || Object.keys(f);
-  const linkLabels = { root: "Client folder", footageUploads: "Footage", finalEdits: "Deliver cut", brandVoice: "Brand voice", hooks: "Hooks", assets: "Assets" };
+  const linkLabels = { root: "Client folder", footageUploads: "Footage", finalEdits: "Deliver cut", brandVoice: "Brand voice", hooks: "Hooks", assets: "Assets", customerData: "Customer data", contentIdeas: "Content ideas" };
   const eb = video.editorBrief || {};
   const hasEditorBrief = !opts.hideEditorBrief && Object.values(eb).some(v => v);
 

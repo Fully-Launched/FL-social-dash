@@ -240,7 +240,7 @@ approval gates.
 | `script-writer` | production | script attached to an approved concept |
 | `filming-brief` | production | plain-language filming instructions for the client |
 | `editor-brief` | post-production | handoff instructions + Drive link for the editor |
-| `calendar-planner` | scheduling | `clients/<slug>/calendar.md`, feeds the dashboards |
+| `calendar-planner` | scheduling | `clients/<slug>/calendar.md` — was written for the old config.json dashboards; needs repointing at Supabase |
 | `performance-review` | feedback | performance notes folded back into the next `concept-engine` run |
 
 `voice-doc`, `customer-data-doc`, `positioning-doc`, and
@@ -282,9 +282,9 @@ Drive, not a second source. Update the repo, then re-sync the Drive doc;
 don't edit the Drive doc directly and let it drift.
 
 The dashboards link out to these folders (deep links, not in-page upload);
-they don't duplicate their content. See Architecture Reference below for
-where a client's folder links actually live now (it's no longer only
-`config.json`).
+they don't duplicate their content. Each client's folder links live in
+`social_drive_folder_links` in Supabase, edited from the operator
+dashboard's All Clients → Edit.
 
 ## Poppy AI
 
@@ -310,171 +310,159 @@ fully-social-os/
   vercel.json                 build command, output directory, redirects/rewrites
   templates/                 shared doctrine — the V.I.D. method, document
                               formats every skill writes into
-  .claude/skills/            the thirteen skills (see Build Spec)
   clients/<slug>/
     brain.md                 output of client-brain — positioning, ICP,
                               voice, pillars/formats/perspectives, facts
     sources/                 raw material: call transcripts, voice memo
                               transcripts, DMs, objections — mined, not paraphrased
     research/                dated research-sweep outputs (packaging only)
-    concepts/                concept-engine output, one file per cycle,
-                              gated by owner approval before scripting
-    calendar.md               scheduled videos for the active plan window
-    status/                  pasted-in status reports from the client portal
+    concepts/                concept-engine output, one file per cycle
   dashboards/
-    template/                 the dashboard templates (client portal, editor)
-                               + shared shell.css/shell.js/auth.js — build.py
-                               inlines these into every generated page
-    clients/<slug>/config.json   per-client source data: display name, plan
-                               window, drive folder links, videos, concepts,
-                               competitors, analytics — see "What's live vs.
-                               git-driven" below for which of this a client's
-                               portal actually reads anymore
+    template/                 client portal + editor templates, and the shared
+                               shell.css/shell.js/auth.js that build.py inlines
+                               into every page
     operator/                 the operator dashboard template + news.json /
                                agency-resources.json (agency-wide, not per-client)
     dist/                     BUILD OUTPUT ONLY, gitignored — what build.py
-                               writes and what Vercel actually deploys.
-                               Never hand-edited.
+                               writes and what Vercel deploys. Never hand-edited.
   supabase/
-    migrations/                001_social_os_schema.sql (tables + RLS),
-                               002_social_videos_overview_body.sql
+    migrations/                001 (tables + RLS), 002 (overview/body columns),
+                               003 (write path: action functions, audit log,
+                               active-editor RLS)
     config.example.js          template for supabase/config.js (gitignored —
                                the real Supabase URL/anon key, local dev only)
 ```
 
+The thirteen skills are not in this repo (`.claude/skills/` doesn't exist
+here) — where they live is an open question. `calendar-planner` in
+particular was written to update the old per-client `config.json` files,
+which no longer exist; it needs repointing at Supabase or retiring.
+
+## Data: social_videos is the single source of truth
+
+Every client, video, editor, and Drive link lives in Supabase (same
+project as fully-launched-crm; every table here is prefixed `social_`).
+Nothing about a client or video is stored in git, in the built pages, or in
+a browser's localStorage. There is no status report or copy-paste relay.
+
+Who can write what (`supabase/migrations/003_social_videos_write_path.sql`):
+
+- **Operators** — full direct read/write on every `social_` table. Gate 1
+  (approve a concept) goes through `social_operator_approve_concept` so it's
+  stamped with who approved it.
+- **Clients** — no direct writes. Only `social_client_video_action(video,
+  action, note)`, which checks the move against the transition table in 003:
+  approve_concept, request_concept_changes (clears gate 1 — the concept goes
+  back to the owner), reject, mark_filmed, mark_ready_to_edit (self-serve
+  only), approve_final, request_revisions.
+- **Editors** — no direct writes. Only `social_editor_mark_delivered`.
+  Every editor policy requires `social_editors.active` — a deactivated
+  editor sees nothing. (Revoke their session in Supabase Auth too.)
+
+`VIDEO_ACTIONS` in `dashboards/template/shell.js` mirrors the transition
+table to decide which buttons to show — keep the two in step. The database
+is what actually enforces it.
+
+`social_status_audit_log` records every status change and gate-1
+approval/reset (action, note, who, role, when), whichever path it came
+through. Operators can read it.
+
 ## Auth
 
-All three dashboards (client portal, operator, editor) sit behind a real
-login — Supabase Auth, backed by three role tables in
-`supabase/migrations/001_social_os_schema.sql`, all RLS-protected:
+All three dashboards sit behind Supabase Auth (email + password), backed by
+three role tables — `social_operators`, `social_editors`,
+`social_client_users` — all RLS-protected. Nothing renders until
+`dashboards/template/auth.js`'s gate resolves who's signed in and the
+page's own `resolveAccess()` passes. Client-portal access is decided by RLS:
+the page fetches the `social_clients` row for the URL's slug, and a client
+login only gets its own row back.
 
-- `social_operators` — Tait (and any future FL staff). Full access to
-  everything, everywhere, by design.
-- `social_editors` — contract/staff editors, scoped by `editor_id` to
-  videos actually assigned to them, and only once a video reaches
-  `with_editor` or later. `active = false` gates the editor dashboard's UI
-  but is **not** enforced by RLS — an offboarded editor's login can still
-  read/write anything RLS would otherwise let them touch if they query
-  Supabase directly. Known gap, not yet closed.
-- `social_client_users` — a client's own login, scoped to exactly one
-  `client_id`. Not yet provisioned for any real client (see Current State).
+**Before creating any client or editor login:** the CRM's tables in the
+same project allow any authenticated user (see the note at the end of
+001). A client or editor login would be able to read and write the CRM,
+including financials, until the CRM's policies check team membership. That
+fix belongs in the fully-launched-crm repo and is not done yet.
 
-Nothing renders — no page chrome, no data — until `dashboards/template/auth.js`'s
-gate resolves who's signed in and a page-specific `resolveAccess()` check
-passes. (An earlier version of this gate had a CSS specificity bug where
-the app shell rendered behind the login screen regardless of auth state —
-fixed; the `.hidden` utility class is `!important` now specifically so an
-element's own more-specific display rule can't silently win over it again.)
-
-Client-portal access is checked with a single query: fetch the
-`social_clients` row matching the URL's slug, and let RLS decide whether it
-comes back — a client_user's own row only resolves if the slug matches
-their real `client_id` (enforced server-side, not by the page's own logic).
-An operator login always resolves, for any client.
+Password reset calls `resetPasswordForEmail` with no `redirectTo`, and no
+page handles setting a new password — reset links land on the project's
+Site URL. Not fixed yet.
 
 ## Dashboards
 
-Three views, all Supabase-auth-gated, all reachable from a Vercel
-deployment (not "opened locally" as the primary path anymore, though local
-serving from the repo root still works for dev):
+Three shared, static pages. They contain no client data — everything is
+fetched after login.
 
-### Client portal
+### Operator dashboard — `/` → `/operator/dashboard.html`
 
-`dashboards/dist/clients/portal.html` — **one shared, dynamic file now, not
-one generated per client.** It reads the client's slug from its own URL
-(`/clients/<slug>`, or the older `/clients/<slug>/portal.html` shape some
-clients' `config.json` still has on file as `portalUrl` — `vercel.json`
-rewrites both to this one file) and fetches that client from Supabase at
-runtime. Adding a client is no longer a rebuild — see "Adding a client"
-below.
+Nav: **Dashboard** (overdue, waiting-on-me counts, clients low on content)
+→ **All Clients** (add/edit clients, status, plan window, Drive links) →
+**Content Review** (in pipeline order: concepts awaiting gate 1, with
+"Approve all"; ready for an editor, with an editor picker; edits awaiting
+gate 2; plus waiting-on-client and with-editor for visibility) →
+**Schedule** (every video with inline date editing, "+ New video",
+"📋 Bulk add concepts") → **Content Calendar** (🎥 film and 📣 post dates,
+month navigation) → **Ready to Post** (caption with copy button, "Mark
+posted").
 
-**What's live vs. git-driven, for the client portal specifically:**
-- **Live from Supabase:** the client record itself (name, plan window,
-  `client_system`) from `social_clients`, and Drive folder links from
-  `social_drive_folder_links`.
-- **Still git-`config.json`-driven, not live:** the videos shown on the
-  portal (My Videos, Content Calendar), analytics, and pending-concepts.
-  `social_videos` exists as a table with full RLS already written and
-  tested, but nothing in this dashboard queries it yet. See Roadmap.
-- **Writes:** unchanged from the original design — every status change
-  (approve/reject/mark filmed/etc.) still only writes to that browser's own
-  `localStorage`, expressed as a copy-paste status report the client sends
-  back, applied to the real `config.json` by `calendar-planner`. No live
-  Supabase writes exist anywhere in this repo yet.
+Click any video for its record; "Edit" opens the full form — title,
+platforms, status, dates, editor, overview, hook, script, filming
+instructions, caption, note, and the editor brief. Entering a post date
+suggests due-to-edit 7 days earlier; it never overwrites a typed date.
 
-### Operator dashboard
+**Bulk add** is how a month of content gets in: plan it with Claude, click
+"Copy the prompt to give Claude", paste Claude's JSON back. Every concept
+lands as `concept_pending`, invisible to the client until approved.
 
-`dashboards/dist/operator/dashboard.html` — one shared file, not
-per-client, aggregating across every client. Current nav, top to bottom:
+Competitor Tracker, Analytics, and News Consolidator are off the nav —
+future builds, to be rebuilt against Supabase (the old config.json versions
+are in git history).
 
-**Dashboard** → **All Clients** → **Content Calendar** → **Schedule** →
-**Content Review** → **Ready to Post** → *(Sync)* **Apply status report**
+### Client portal — `/clients/<slug>`
 
-- **All Clients** is its own tab (not on the Dashboard home page anymore) —
-  a single list deduped by slug, merging `CLIENTS` (every
-  `dashboards/clients/<slug>/config.json` checked into git — still what
-  drives Content Calendar/Schedule/Content Review/Ready to Post) with
-  `LIVE_CLIENTS` (every live `social_clients` row). Shows Drive-folder
-  quick links when known, and either "Open portal" (built straight from the
-  slug — every live client's URL is uniform now) or a "Not live yet" badge
-  for a client that's only in git so far. Also hosts "+ New client," which
-  inserts straight into `social_clients` — see "Adding a client" below.
-- **Content Calendar, Schedule, Content Review, Ready to Post** are all
-  still `config.json`-driven (via the baked-in `CLIENTS` array), not live —
-  same status quo as before this round of changes.
-- **Competitor Tracker, Analytics, and News Consolidator were removed from
-  the nav** — not deleted. Their `<section>` markup lives in one
-  `<!-- FUTURE BUILDS -->` HTML comment block right after `</main>` in
-  `dashboards/operator/dashboard.template.html` (confirmed unreachable —
-  their element ids don't exist anywhere outside that comment), and their
-  render functions (`renderCompetitors`/`renderAnalytics`/`renderNews`)
-  stay defined but uncalled from `renderAll()`, each marked with a comment
-  pointing at exactly what to restore. Restoring one is copy-paste, not a
-  rebuild from memory.
+One shared file; the slug comes from the URL (`vercel.json` also rewrites
+the older `/clients/<slug>/portal.html`). The client sees: what's waiting
+on them, concepts to approve (with filming instructions), what to film with
+a "Drop footage here" link to their Drive footage folder, what's in
+progress, finished edits for final approval, and a calendar of film and
+post dates. Every button calls `social_client_video_action`. Concierge
+clients only see the final-approval side. An operator opening a portal sees
+exactly what the client sees, minus the client's buttons, plus a banner.
+Analytics is off the nav until there's live data. News only shows when
+`news.json` has items for that client.
 
-### Editor dashboard
+### Editor dashboard — `/editor/dashboard.html`
 
-`dashboards/dist/editor/dashboard.html` — one shared file, unchanged in
-this round: still reads every client's `config.json`, shows every video
-`with_editor` across every client, still writes to `localStorage` + its own
-status-report generator.
+An editor sees only videos assigned to them at `with_editor` or later
+(RLS): the brief, the footage / deliver / brand-voice links, a due-date
+calendar, "Mark delivered", and a history of what they've delivered. An
+operator sees every editor's queue with a filter.
 
-## Adding a client — two different things now
+## Adding a client
 
-- **Fast path (self-serve, no code, no redeploy):** operator dashboard →
-  All Clients → "+ New client" → name/slug/client_system/plan dates. Inserts
-  directly into `social_clients`. The client's portal is live and reachable
-  the instant that insert succeeds. Drive folder links are a deliberate
-  separate step (`social_drive_folder_links`, added directly in Supabase
-  once the real Drive folder exists) — not required for the portal to work.
-- **Full pipeline (real content, still git-driven):** run `client-brain` to
-  produce `clients/<slug>/brain.md`, create the real Drive folder structure
-  by hand (this repo never creates Drive folders itself), and add
-  `dashboards/clients/<slug>/config.json` with the real folder links —
-  `calendar-planner` and the rest of the skill pipeline still target this
-  file. This is still required before Content Calendar/Schedule/Content
-  Review/Ready to Post know the client exists, because those four pages
-  haven't moved to live data yet (see Roadmap).
-
-A client can be in one path, the other, or both — the "All Clients" list
-shows exactly which.
+Operator dashboard → All Clients → "+ New client" (name, slug,
+self-serve/concierge, plan window). The portal is live immediately. Once
+the real Drive folder exists (created by hand — this repo never creates
+Drive folders), add its links with "Edit". Giving the client a login
+means creating their Supabase Auth user and a `social_client_users` row —
+blocked on the CRM fix above.
 
 ## Build & deploy
 
-`python3 dashboards/build.py` inlines `shell.css`/`shell.js`/`auth.js` into
-each template and writes everything to `dashboards/dist/` (gitignored) —
-the client portal once (shared), the operator and editor dashboards once
-each, from every `dashboards/clients/*/config.json` it finds.
+`python3 dashboards/build.py` inlines `shell.css`/`shell.js`/`auth.js`
+into each template and writes `dashboards/dist/` (gitignored). Only
+agency-wide content (`news.json`, `agency-resources.json`) is baked in —
+never client data, because `dist/` is served publicly and the login gate
+only runs in the browser. Rebuild after changing templates or those two
+JSON files; adding clients or videos never needs a rebuild.
 
-`vercel.json`: `buildCommand` runs `build.py`, then generates
-`dashboards/dist/supabase/config.js` from the `SUPABASE_URL`/
-`SUPABASE_ANON_KEY` environment variables (the anon key is safe client-side
-— access control is RLS, not secrecy). `outputDirectory` is
-`dashboards/dist` — nothing outside it is ever deployed, which is also why
-`clients/<slug>/brain.md` and `sources/` (real, sensitive client material)
-are never at risk of being served as static files. `redirects` sends `/` to
-the operator dashboard. `rewrites` route both `/clients/<slug>` and
-`/clients/<slug>/portal.html` to the one shared client-portal file.
+`vercel.json`: `buildCommand` runs `build.py`, then writes
+`dashboards/dist/supabase/config.js` from the `SUPABASE_URL` /
+`SUPABASE_ANON_KEY` environment variables (the anon key is public by design
+— access control is RLS). `outputDirectory` is `dashboards/dist`, so
+`clients/<slug>/` source material is never served.
+
+Migrations are applied by hand in the Supabase SQL editor, in order. Each
+is safe to re-run.
 
 ---
 
@@ -483,100 +471,59 @@ the operator dashboard. `rewrites` route both `/clients/<slug>` and
 Fast-changing — a snapshot, not a promise. Trust this section over Build
 Spec or Architecture Reference if they ever disagree.
 
-## Live clients right now
+As of 2026-09-23:
 
-| Client | `social_clients` row | `config.json` | Status |
-|---|---|---|---|
-| `grad-gig` | ✅ live | ✅ present, 0 videos | The one real client. No videos yet — correctly empty, not fabricated (principle 4). |
-| `test-fully-launched` | ✅ live | ✅ present, 9 fabricated videos | Kept intentionally as a working demo/test portal to show Tait/external testers — not real. |
-| `test-grandpas-hardware` | ❌ deleted | ❌ deleted | Concierge-path UI proof — done, removed. |
-| `test-loop-coffee` | ❌ deleted | ❌ deleted | General dashboard-design proof — done, removed. |
-| `andys-grocery` | ❌ deleted | never existed | Was only a test of the "+ New client" form itself. |
-
-**Content Calendar, Schedule, Content Review, and Ready to Post are still
-git-`config.json`-driven** — so as of this snapshot they show `grad-gig`
-(real, empty) and `test-fully-launched` (9 fabricated videos), mixed
-together with no in-app label distinguishing real from fabricated. Worth
-knowing before showing any of those four pages to someone as if they
-reflect real activity.
+- **Clients:** `grad-gig` (Grad Gig) and `test-fully-launched` (Fully
+  Launched), both self-serve, both in Supabase. Fully Launched's old
+  fabricated test videos were deleted rather than migrated; it starts
+  empty. `clients/test-fully-launched/README.md` still describes it as a
+  fake test client.
+- **Migration 003** must be run in Supabase before the rebuilt dashboards
+  work — the client and editor buttons call its functions.
+- **No client or editor logins exist yet**, pending the CRM RLS fix.
 
 ## Blueprint vs. built
 
 | Blueprint concept | Current state |
 |---|---|
-| Customer Data doc (pain/dreams/fears/practical goals) | ✅ Built as its own skill — `customer-data-doc`, source-tagged, includes hook candidates directly. |
-| Three Pillars/Formats/Perspectives ("taste document") | ✅ Built as its own skill — `positioning-doc`. Standalone document, not a `brain.md` subsection — `brain.md` now just points to it. Surfaces candidates only; Tait still picks the final three of each. |
-| Voice (calls, voice memos, writing samples → a usable voice reference) | ✅ Built as its own skill — `voice-doc`. Cumulative raw log plus a distilled Voice Profile that `script-writer`/`concept-engine` load before writing. |
-| Unique Perspectives Overview (expanded) | Folded into `positioning-doc`'s perspective candidates rather than a separate fourth document. |
-| Poppy AI (competitor list + format chat) | 🧩 Partial — Competitor Tracker page exists (manual entry, currently parked — see Architecture Reference), Poppy AI itself is a manual, on-demand tool, not embedded. |
-| Client portal: approve posts, analytics, competitors, Poppy, assets, filming instructions | 🧩 Partial — client portal has Dashboard/My Videos/Calendar/Analytics/Docs. Competitors + Poppy access are operator-only, not on the client portal — blueprint wants the client to see competitors too. |
-| Content calendar with per-card approve/rewrite/reject | 🧩 Partial — My Videos has approve-shaped actions (mark filmed/ready to edit/reject) but that's *after* filming, not a pre-filming concept approval on the calendar itself. The calendar view is read-only. |
-| Footage upload per content card | ❌ Not built — one shared Footage Uploads Drive folder per client (deep link), not per-video upload. Deliberate v1 simplification. |
-| Editor dashboard | ✅ Built — shared across clients, shows each `with_editor` video's full brief, footage/deliver/brand-voice links, an editor filter, "mark delivered," its own status-report generator. Still `config.json`-driven, not live. |
-| Client review (gate 3, after owner approval, before posting) | ✅ Built — `client_review` status between `in_review` and `ready_to_post`. Client portal shows it as "Final review," operator dashboard shows it read-only under "Waiting on the client." The concept gate (`concept_pending`/`to_film`) only appears for `client_system: "self-serve"` clients — concierge clients skip straight to film/edit. |
-| 7-day edit-to-post rule | ✅ Built, as a default, not an enforced rule — every date is hand-editable on the operator dashboard's Schedule page; the 7-day gap is only ever `calendar-planner`'s starting suggestion. |
-| Caption field on a video/post | ✅ Built — `caption` on every video, shown on the client portal and, via `editorBrief`, considered by the editor. |
-| Monthly performance tied to pillar/format/perspective | 🧩 Partial — unchanged, still only V.I.D.-based. |
-| Personalized interview questions per client (System 2) | ✅ Built — `interview-questions-doc`, drawn from that client's `voice.md`/`customer-data.md`. Concierge clients only. |
-| Story-over-value as an explicit doctrine | ✅ Built — `templates/story-over-value.md`, cross-linked from `vid-method.md`'s Identity section. |
-| Authenticity Questions (voice-memo prompt sent to any client) | ✅ Built — `templates/authenticity-questions.md`. |
-| Real auth (who can open which dashboard, which client) | ✅ Built — see Architecture Reference's Auth section. Not in the original blueprint at all; added once dashboards moved off "no backend." |
-| Client data + Drive links read live, not baked at build time | 🧩 Partial — `social_clients`/`social_drive_folder_links` are live; `social_videos` isn't queried anywhere yet. See Roadmap. |
+| Customer Data / taste document / voice / interview questions | ✅ Skills — `customer-data-doc`, `positioning-doc`, `voice-doc`, `interview-questions-doc` (not in this repo). |
+| AI-assisted content calendar | ✅ Plan with Claude, then "Bulk add concepts" on the operator dashboard. |
+| Concept approval: owner (gate 1), then client approve / rewrite / reject | ✅ Live in Supabase, enforced by RLS + functions. |
+| Filming instructions per video, client sees what to film | ✅ `filming_instructions`, shown on the client's concept and to-film cards. |
+| Footage upload per content card | 🧩 One shared Footage Uploads Drive folder per client, deep-linked from each to-film card. Not per-video upload. |
+| Editor dashboard (brief, footage, brand voice, deliver) | ✅ Live, scoped per editor by RLS. |
+| Owner review (gate 2), client review (gate 3) | ✅ Live. |
+| 7-day edit-to-post rule | ✅ As a suggestion when entering a post date; always editable. |
+| Posting database with caption | ✅ Ready to Post, with copy-caption. Posting stays manual (principle 6). |
+| Analytics / monthly performance loop | ❌ Not built — off the client nav. |
+| Competitors + Poppy on the client portal | ❌ Not built. |
 
-## Backlog — content/skill-level gaps
+## Backlog
 
-Distinct from the Roadmap below: these are product gaps against the
-blueprint, not the data-architecture progression.
-
-1. Surface competitors + Poppy AI access on the client portal, not just
-   operator.
-2. Tie `performance-review`'s output to pillar/format/perspective, not just
-   V.I.D. lines — `positioning-doc` names them now, so this is unblocked
-   whenever it's worth doing.
-3. Footage upload per content card, and real in-page Drive upload/download
-   — both explicitly deferred v1 simplifications, not oversights.
-4. Run the whole intake pipeline (`transcript-mine` → `voice-doc` →
-   `customer-data-doc` → `positioning-doc` → `interview-questions-doc` for
-   concierge) against real Grad Gig material for the first time —
-   everything so far is built and internally consistent, not yet proven
-   against a live client's actual calls.
+1. CRM RLS fix (fully-launched-crm repo) — blocks all client/editor logins.
+2. Password reset: `redirectTo` + a set-new-password page.
+3. Repoint or retire `calendar-planner`; find where the skills live.
+4. Analytics (manual entry first), then the monthly performance loop tied
+   to pillar/format/perspective.
+5. Competitors + Poppy access on the client portal.
+6. Run the intake pipeline against real Grad Gig material for the first time.
 
 ---
 
 # Roadmap / Not Yet Built
 
-The target end state: the full client lifecycle running in-app, live in
-Supabase end to end, not the current git-config/localStorage workaround.
-Documented ahead of being built so each build step has a known destination.
-
 | Phase | Description | Status |
 |---|---|---|
-| 0 | Client creation — operator adds a client, gets a working (empty) portal instantly | ✅ **Live** — the only phase actually built this way so far |
-| 1 | Onboarding survey sent to new clients — platform handles (not passwords: delegated Business Manager / Creator account access per platform), brand voice/guidelines, initial content ideas, existing assets | ❌ Not built |
-| 2 | Survey data lands directly on the client's row in Supabase | ❌ Not built |
-| 3 | Operator (Tait) generates content ideas from that data, possibly AI-assisted | ❌ Not built |
-| 4 | Operator schedules content and writes filming/content instructions for the client | ✅ **Live** — Content Calendar, Schedule, and "+ New video" all read/write `social_videos` directly now. Filming/content instructions specifically (`filming_instructions`, `hook`, `caption`, etc.) aren't in the creation form yet — title/platform/status/dates only — so still todo, but the record itself and the schedule are real. |
-| 5 | Client uploads requested content (self-serve) or Tait/editor films directly (concierge), per `client_system` | 🧩 Workaround — Drive deep-links + client-portal status marking, not true in-app upload |
-| 6 | Editor edits and submits for review | 🧩 Workaround — editor dashboard exists and works, but is `config.json`-driven, not live |
-| 7 | Operator approves or sends back for revisions | 🧩 Workaround — operator dashboard's Content Review exists, `config.json`-driven |
-| 8 | Client reviews, approves or requests further edits | 🧩 Workaround — client portal exists, writes to `localStorage` + status report, not live |
-| 9 | Final high-quality content downloaded/exported for posting | 🧩 Workaround — Drive deep-link + "Ready to Post," posted manually (principle 6 — stays manual by design, this one isn't a gap) |
-
-**`social_videos` is live now** — Content Calendar, Schedule, and "+ New
-video" all read/write it directly, under the operator RLS policy. That was
-the previous "next concrete build" note here; done.
-
-**Next concrete build: the client portal's own video reads/writes going
-live.** Only the operator side moved so far — the client portal still
-reads its video list from `config.json` and writes every status change
-(approve/reject/mark filmed/etc.) to `localStorage` + a status report, not
-`social_videos`. Phases 5, 6, and 8 above all depend on a client-side live
-record to act on, not just the operator's: a client filming their own
-footage, an editor's delivered cut, and a client's own review gate all
-need something real on the other end. This is also the point where the
-gate-1 concept-approval columns (`concept_approved_by`/`concept_approved_at`)
-start mattering — they only gate anything once a real client login can
-read `social_videos` and hit that check.
+| 0 | Client creation — operator adds a client, gets a working (empty) portal instantly | ✅ Live |
+| 1 | Onboarding survey — platform access (delegated, never passwords), brand voice, initial ideas, existing assets | ❌ Not built |
+| 2 | Survey data lands on the client's row in Supabase | ❌ Not built |
+| 3 | Operator generates content ideas, AI-assisted | 🧩 Claude + Bulk add; not in-app |
+| 4 | Operator schedules content and writes filming instructions | ✅ Live |
+| 5 | Client films and uploads (self-serve) or Tait films (concierge) | ✅ Status live; upload is a Drive deep link |
+| 6 | Editor edits and submits for review | ✅ Live |
+| 7 | Operator approves or sends back for revisions | ✅ Live |
+| 8 | Client reviews, approves or requests edits | ✅ Live |
+| 9 | Final content exported and posted manually | ✅ Live (posting stays manual by design) |
 
 ## Future Considerations — not committed, from a shelved alternative spec
 
@@ -586,12 +533,8 @@ dashboard under a single login — not pursued) before it's deleted. These
 are ideas worth keeping on file, not plans; nothing here is scheduled
 against any phase above.
 
-1. **`status_audit_log` table** — log every video status transition
-   (`from_status`, `to_status`, `changed_by`, `changed_at`). Cheap to add,
-   but only actually useful once writes are fully live in Supabase —
-   today, most status changes (phases 6–8 above) still go through
-   `localStorage` + the status report, so there'd be nothing real to log
-   yet.
+1. ~~`status_audit_log` table~~ — built as `social_status_audit_log`
+   in migration 003.
 2. **Timestamped video comments** — a comment tied to a specific second
    within a video, not the video record as a whole. Relevant once there's
    a live operator/client review loop to attach it to (phases 7–8), not

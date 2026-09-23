@@ -18,38 +18,37 @@
   <div class="sync-badge" id="authUserBadge"></div>
   <div class="nav-item active" data-view="home"><span class="ic">🏠</span> Dashboard</div>
   <div class="nav-item" data-view="clients"><span class="ic">👥</span> All Clients</div>
+  <div class="nav-item" data-view="review"><span class="ic">🛎️</span> Content Review</div>
   <div class="nav-item" data-view="schedule"><span class="ic">🗓️</span> Schedule</div>
   <div class="nav-item" data-view="calendar"><span class="ic">📅</span> Content Calendar</div>
-  <div class="nav-item" data-view="review"><span class="ic">🛎️</span> Content Review</div>
   <div class="nav-item" data-view="post"><span class="ic">✅</span> Ready to Post</div>
   <!-- Competitor Tracker, Analytics, and News Consolidator are future
-       builds — pulled from the nav for now, not deleted. See the matching
-       "FUTURE BUILDS" comment block at the end of <main> for their view
-       markup, and the "FUTURE BUILDS" comment near renderCompetitors/
-       renderAnalytics/renderNews in the script below for their JS. To
-       restore one: put its nav-item back here, move its <section> back
-       from the comment block into <main>, and add its render call back
-       into renderAll(). -->
-  <div class="nav-section-label">Sync</div>
-  <div class="nav-item" data-view="sync"><span class="ic">🔄</span> Apply status report</div>
+       builds — pulled from the nav for now. Their old config.json-driven
+       markup/JS is in git history (before social_videos became the single
+       source of truth); rebuild them against Supabase when they come back. -->
 </nav>
 
 <main class="main">
 
   <div class="chip-row" id="globalClientFilter" style="margin-bottom:10px"></div>
   <div id="globalClientBanner"></div>
+  <div id="loadError"></div>
 
   <section class="view active" id="view-home">
     <div class="page-head"><h1>Dashboard</h1><p id="asOf"></p></div>
     <div class="stat-grid" id="homeStats"></div>
     <div class="card">
-      <h2>Needs content ideas <span style="font-weight:400;color:var(--sub);font-size:0.78rem">— running low on scheduled/pending concepts</span></h2>
+      <h2>Overdue</h2>
+      <div id="overdueList"></div>
+    </div>
+    <div class="card">
+      <h2>Needs content ideas <span style="font-weight:400;color:var(--sub);font-size:0.78rem">— fewer than 3 videos queued at concept or filming stage</span></h2>
       <div id="needsIdeasList"></div>
     </div>
   </section>
 
   <section class="view" id="view-clients">
-    <div class="page-head"><h1>All Clients</h1><p>Every client, from either source, deduped by slug — what's live has a working portal; what's only in a config.json still needs one written before Schedule/Content Review/etc. can see it.</p></div>
+    <div class="page-head"><h1>All Clients</h1><p>Every client in Supabase. Their portal is live at /clients/&lt;slug&gt; the moment they're added.</p></div>
     <div class="card">
       <button id="newClientBtn" style="margin-bottom:14px">+ New client</button>
       <div class="card" id="newClientPanel" style="display:none;margin-bottom:14px"></div>
@@ -58,680 +57,562 @@
     </div>
   </section>
 
-  <section class="view" id="view-calendar">
-    <div class="page-head"><h1>Content Calendar</h1><p>Live — every client's scheduled videos, read straight from <code>social_videos</code>.</p></div>
-    <div class="card"><div class="cal-grid" id="calGrid"></div></div>
+  <section class="view" id="view-review">
+    <div class="page-head"><h1>Content Review</h1><p>Everything waiting on you, in pipeline order. Click any title for the full record.</p></div>
+    <div class="card"><h2>1 · Concepts awaiting your approval <span style="font-weight:400;color:var(--sub);font-size:0.78rem">— the client can't see these until you approve</span></h2><div id="approveAllWrap"></div><div id="conceptsList"></div></div>
+    <div class="card"><h2>2 · Ready for an editor</h2><div id="toEditorList"></div></div>
+    <div class="card"><h2>3 · Edits awaiting your approval</h2><div id="editsList"></div></div>
+    <div class="card"><h2>Waiting on the client</h2><div id="clientWaitingList"></div></div>
+    <div class="card"><h2>With an editor</h2><div id="withEditorList"></div></div>
   </section>
 
   <section class="view" id="view-schedule">
-    <div class="page-head"><h1>Schedule</h1><p>Live — reads and writes <code>social_videos</code> directly. Date edits here save immediately, no relay step. Nothing auto-computes or overwrites what you type; the 7-day film-to-post gap is only ever a starting suggestion when a video is first created.</p></div>
+    <div class="page-head"><h1>Schedule</h1><p>Every video and its dates. Date changes save immediately. Entering a post date on a new video suggests an edit-due date 7 days earlier — always editable.</p></div>
     <div class="card">
-      <button id="newVideoBtn" style="margin-bottom:14px">+ New video</button>
-      <div class="card" id="newVideoPanel" style="display:none;margin-bottom:14px"></div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        <button class="primary" id="newVideoBtn">+ New video</button>
+        <button id="bulkAddBtn">📋 Bulk add concepts</button>
+      </div>
+      <div class="chip-row" id="scheduleStatusFilter"></div>
       <table>
-        <thead><tr><th>Video</th><th>Client</th><th>Status</th><th>Due to film</th><th>Due to edit</th><th>Post date</th></tr></thead>
+        <thead><tr><th>Video</th><th>Client</th><th>Status</th><th>Editor</th><th>Due to film</th><th>Due to edit</th><th>Post date</th></tr></thead>
         <tbody id="scheduleRows"></tbody>
       </table>
-      <div class="empty" id="scheduleEmpty" style="display:none">No videos scheduled yet.</div>
+      <div class="empty" id="scheduleEmpty" style="display:none">No videos yet.</div>
     </div>
   </section>
 
-  <section class="view" id="view-review">
-    <div class="page-head"><h1>Content Review</h1><p>Three gates: agency concept approval and edit approval are yours — click straight from here. The concept and final-review gates belong to the client; shown here for visibility, not action.</p></div>
-    <div class="grid-2">
-      <div class="card"><h2>Concepts awaiting your approval</h2><div id="conceptsList"></div></div>
-      <div class="card"><h2>Edits awaiting your approval</h2><div id="editsList"></div></div>
-    </div>
-    <div class="card" style="margin-top:14px">
-      <h2>Waiting on the client</h2>
-      <div id="clientWaitingList"></div>
-    </div>
+  <section class="view" id="view-calendar">
+    <div class="page-head"><h1>Content Calendar</h1><p>Each video on its film date and its post date.</p></div>
+    <div class="card"><div class="cal-grid" id="calGrid"></div></div>
   </section>
 
   <section class="view" id="view-post">
-    <div class="page-head"><h1>Ready to Post</h1><p>Approved, waiting for whoever holds the login.</p></div>
+    <div class="page-head"><h1>Ready to Post</h1><p>Approved by you and the client. Post manually, then mark it posted.</p></div>
     <div class="card"><div id="postList"></div></div>
   </section>
 
-  <section class="view" id="view-sync">
-    <div class="page-head"><h1>Apply status report</h1><p>Paste a report copied from a client portal or the editor dashboard.</p></div>
-    <div class="card">
-      <textarea id="pasteInput" rows="7" placeholder="Paste the report here..."></textarea>
-      <div style="margin-top:10px"><button class="primary" id="pasteBtn">Apply report</button></div>
-      <div id="pasteResult" style="margin-top:12px; font-size:0.85rem;"></div>
-    </div>
-  </section>
-
 </main>
-
-<!-- FUTURE BUILDS — Competitor Tracker, Analytics, News Consolidator.
-     Pulled from the nav (see the matching comment there) but kept here,
-     working, so restoring one is a copy-paste back into <main> above,
-     the nav-item, and its renderAll() call (see the matching comment near
-     renderCompetitors/renderAnalytics/renderNews in the script below).
-
-  <section class="view" id="view-competitors">
-    <div class="page-head"><h1>Competitor Tracker</h1><p>Manually maintained per client — see Sources note below.</p></div>
-    <div class="card">
-      <table>
-        <thead><tr><th>Competitor</th><th>Platforms</th><th>Followers</th><th>Eng. rate</th><th>Posts/wk</th><th>30d growth</th></tr></thead>
-        <tbody id="compRows"></tbody>
-      </table>
-      <div class="empty" id="compEmpty" style="display:none">No competitors tracked for this client yet.</div>
-    </div>
-  </section>
-
-  <section class="view" id="view-analytics">
-    <div class="page-head"><h1>Analytics</h1><p>Manually entered per sync — not a live feed.</p></div>
-    <div class="stat-grid" id="anStats"></div>
-    <div class="card">
-      <h2>Followers over time</h2>
-      <div class="chart-wrap" id="anChart"></div>
-      <div class="chart-legend" id="anLegend"></div>
-    </div>
-  </section>
-
-  <section class="view" id="view-news">
-    <div class="page-head"><h1>News Consolidator</h1><p>Curated by hand — links worth having on file, not an auto-pulled feed.</p></div>
-    <div class="chip-row" id="newsChips"></div>
-    <div class="card"><div id="newsList"></div></div>
-  </section>
-
--->
 
 </div>
 
 <script>/*__SHELL_JS__*/</script>
 <script>/*__AUTH_JS__*/</script>
 <script>
-const CLIENTS = /*__CLIENTS_JSON__*/[];
-const NEWS = /*__NEWS_JSON__*/[];
-const STORE_KEY = "fso_operator_overrides";
+// Everything on this page is read from and written to Supabase —
+// social_videos is the single source of truth for every video. Operators
+// have full RLS access, so writes here are direct table updates, except
+// gate 1 (approve concept), which goes through its own function so every
+// approval is stamped and logged. See
+// supabase/migrations/003_social_videos_write_path.sql.
 
-function loadOverrides() {
-  try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); } catch (e) { return {}; }
+let CLIENTS = [];            // [{ id, slug, name, clientSystem, status, planStart, planEnd, driveFolders }]
+let CLIENT_BY_ID = {};
+let VIDEOS = [];             // [{ client, video }]
+let EDITORS = [];            // social_editors rows
+let EDITOR_BY_ID = {};
+let globalClientFilter = "all";   // "all" or a client id
+
+// ---------- data ----------
+async function loadLiveData() {
+  const [clientsRes, videosRes, foldersRes, editorsRes] = await Promise.all([
+    sbClient.from("social_clients").select("*").order("name"),
+    sbClient.from("social_videos").select("*").order("created_at"),
+    sbClient.from("social_drive_folder_links").select("*"),
+    sbClient.from("social_editors").select("*").order("name"),
+  ]);
+  const errors = [clientsRes, videosRes, foldersRes, editorsRes].filter(r => r.error).map(r => r.error.message);
+  document.getElementById("loadError").innerHTML = errors.length
+    ? `<div class="card" style="border-color:var(--red)"><b style="color:var(--red)">Couldn't load everything from Supabase:</b><div class="meta">${errors.map(escapeHtml).join("<br>")}</div></div>` : "";
+
+  const folderByClient = {};
+  (foldersRes.data || []).forEach(f => { folderByClient[f.client_id] = f; });
+  CLIENTS = (clientsRes.data || []).map(c => {
+    const f = folderByClient[c.id] || {};
+    return {
+      id: c.id, slug: c.slug, name: c.name, displayName: c.name, clientSystem: c.client_system, status: c.status,
+      planStart: c.plan_window_start, planEnd: c.plan_window_end, row: c,
+      driveFolders: {
+        root: f.root, footageUploads: f.footage_uploads, finalEdits: f.final_edits, brandVoice: f.brand_voice,
+        hooks: f.hooks, assets: f.assets, customerData: f.customer_data, contentIdeas: f.content_ideas,
+      },
+    };
+  });
+  CLIENT_BY_ID = {};
+  CLIENTS.forEach(c => { CLIENT_BY_ID[c.id] = c; });
+  EDITORS = editorsRes.data || [];
+  EDITOR_BY_ID = {};
+  EDITORS.forEach(e => { EDITOR_BY_ID[e.id] = e; });
+  VIDEOS = (videosRes.data || []).filter(r => CLIENT_BY_ID[r.client_id]).map(r => {
+    const video = videoFromRow(r);
+    video.assignedEditor = video.editorId && EDITOR_BY_ID[video.editorId] ? EDITOR_BY_ID[video.editorId].name : null;
+    return { client: CLIENT_BY_ID[r.client_id], video };
+  });
+  if (globalClientFilter !== "all" && !CLIENT_BY_ID[globalClientFilter]) globalClientFilter = "all";
+  renderAll();
 }
-function saveOverrides(o) { try { localStorage.setItem(STORE_KEY, JSON.stringify(o)); } catch (e) {} }
 
-// One filter, always visible at the top of the whole dashboard, not just
-// one page. "all" is every client at once (the aggregate view this
-// dashboard always showed); picking one client filters every page to just
-// them and surfaces the button that opens their own live portal, since
-// that's the only place a video can actually be added or edited — see the
-// "Why this can't be driven from the operator dashboard instead" note in
-// dashboards/template/README.md.
-let globalClientFilter = "all";
+function filteredVideos() {
+  return globalClientFilter === "all" ? VIDEOS : VIDEOS.filter(x => x.client.id === globalClientFilter);
+}
 function filteredClients() {
-  return globalClientFilter === "all" ? CLIENTS : CLIENTS.filter(c => c.client === globalClientFilter);
+  return globalClientFilter === "all" ? CLIENTS : CLIENTS.filter(c => c.id === globalClientFilter);
 }
+function findVideo(id) { return VIDEOS.find(x => x.video.id === id); }
+
+// Direct write (operator RLS). Checks a row actually came back, so an update
+// RLS silently filtered out is reported instead of looking like a success.
+async function updateVideo(id, patch) {
+  const { data, error } = await sbClient.from("social_videos").update(videoFieldsToRow(patch)).eq("id", id).select("id");
+  if (error) { alert("Couldn't save: " + error.message); return false; }
+  if (!data || !data.length) { alert("Couldn't save: that video wasn't found (it may have been deleted)."); return false; }
+  await loadLiveData();
+  return true;
+}
+
+// ---------- actions ----------
+async function approveConcept(id) {
+  const r = await runVideoAction("approve_concept_owner", id);
+  if (r.error) { alert(r.error); return; }
+  await loadLiveData();
+}
+async function approveAllConcepts(btn) {
+  const pending = pendingConcepts();
+  const names = Array.from(new Set(pending.map(x => x.client.name))).join(", ");
+  if (!confirm(`Approve ${pending.length} concept(s) for ${names}? They'll appear in the client's portal right away.`)) return;
+  btn.disabled = true;
+  const failed = [];
+  for (let i = 0; i < pending.length; i++) {
+    btn.textContent = `Approving ${i + 1} of ${pending.length}…`;
+    const r = await runVideoAction("approve_concept_owner", pending[i].video.id);
+    if (r.error) failed.push(`${pending[i].video.title}: ${r.error}`);
+  }
+  if (failed.length) alert("Some didn't approve:\n" + failed.join("\n"));
+  await loadLiveData();
+}
+async function approveEdit(id) { await updateVideo(id, { status: "client_review" }); }
+async function requestEditRevisions(id) {
+  const note = prompt("What needs to change? The editor will see this.");
+  if (note === null) return;
+  if (!note.trim()) { alert("Add a note so the editor knows what to change."); return; }
+  await updateVideo(id, { status: "with_editor", note: note.trim() });
+}
+async function sendToEditor(id) {
+  const sel = document.getElementById("assign_" + id);
+  const editorId = sel ? sel.value : "";
+  if (!editorId) { alert("Pick an editor first."); return; }
+  await updateVideo(id, { editorId, status: "with_editor" });
+}
+async function markPosted(id) {
+  if (!confirm("Mark this video as posted?")) return;
+  await updateVideo(id, { status: "posted" });
+}
+async function liveSetDate(id, field, value) { await updateVideo(id, { [field]: value || null }); }
+
+// ---------- shared row + modal ----------
+function rowHtml(x, rightHtml) {
+  const v = x.video;
+  const meta = [x.client.name, (v.platform || []).join(" · "),
+    v.dueToFilm ? "film by " + v.dueToFilm : null,
+    v.dueToEdit ? "edit by " + v.dueToEdit : null,
+    v.postDate ? "post " + v.postDate : null,
+    v.assignedEditor ? "editor: " + v.assignedEditor : null].filter(Boolean).join(" · ");
+  return `<div class="row">
+    <div class="left"><b class="video-card" style="display:inline-block" onclick="openOperatorVideoModal('${v.id}')">${escapeHtml(v.title || "(untitled)")}</b>
+      <div class="meta">${escapeHtml(meta)}</div>
+      ${v.note ? `<div class="meta">Note: ${escapeHtml(v.note)}</div>` : ""}</div>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${rightHtml || statusBadge(v.status, STATUS_LABEL)}</div>
+  </div>`;
+}
+function smallBtn(label, onclick, cls) {
+  return `<button class="${cls || ""}" style="font-size:0.78rem;padding:5px 10px" onclick="${onclick}">${escapeHtml(label)}</button>`;
+}
+function editorSelect(id, selected) {
+  if (!EDITORS.length) return `<span class="meta">No editors yet — add one to social_editors</span>`;
+  const opts = EDITORS.filter(e => e.active || e.id === selected)
+    .map(e => `<option value="${e.id}" ${e.id === selected ? "selected" : ""}>${escapeHtml(e.name)}</option>`).join("");
+  return `<select id="assign_${id}" style="font-size:0.82rem;padding:5px 6px"><option value="">Pick editor…</option>${opts}</select>`;
+}
+
+// The buttons each status gets, wherever the video shows up.
+function operatorActionsHtml(x) {
+  const v = x.video, id = v.id;
+  const out = [];
+  if (videoActionsFor(v, "operator", x.client.clientSystem).includes("approve_concept_owner")) out.push(smallBtn("Approve concept", `approveConcept('${id}')`, "primary"));
+  if (v.status === "ready_to_edit" || (v.status === "filmed" && x.client.clientSystem === "concierge")) {
+    out.push(editorSelect(id, v.editorId), smallBtn("Send to editor", `sendToEditor('${id}')`, "primary"));
+  }
+  if (v.status === "in_review") {
+    out.push(smallBtn("Approve edit", `approveEdit('${id}')`, "primary"), smallBtn("Request revisions", `requestEditRevisions('${id}')`, "reject"));
+  }
+  if (v.status === "ready_to_post") out.push(smallBtn("Mark posted", `markPosted('${id}')`, "primary"));
+  return out.join("");
+}
+
+function openOperatorVideoModal(id) {
+  const x = findVideo(id);
+  if (!x) return;
+  const actions = operatorActionsHtml(x) + smallBtn("✏️ Edit", `closeVideoModal();openVideoForm('${id}')`) +
+    `<a class="btn" style="font-size:0.78rem;padding:5px 10px" href="/clients/${encodeURIComponent(x.client.slug)}" target="_blank" rel="noopener">Open portal</a>`;
+  openVideoModal(x.client, x.video, { actionsHtml: actions });
+  if (x.client.clientSystem === "self-serve" && x.video.status === "concept_pending") {
+    const meta = document.querySelector("#videoModalBox .modal-meta");
+    if (meta) meta.insertAdjacentHTML("beforeend", x.video.conceptApprovedAt
+      ? ` <span class="badge" style="background:var(--card2);color:var(--sub)">Approved by you — waiting on client</span>`
+      : ` <span class="badge" style="background:var(--card2);color:var(--sub)">Not visible to client yet</span>`);
+  }
+}
+
+// ---------- video form (new + edit) ----------
+const BRIEF_FIELDS = [
+  ["storyBeats", "Story beats"], ["mustKeep", "Must keep"], ["captionsStyle", "Captions style"],
+  ["musicVibe", "Music / pacing vibe"], ["ctaOverlay", "CTA overlay"], ["platformSpecs", "Platform specs"],
+];
+function lbl(text) { return `<label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin:0 0 3px">${escapeHtml(text)}</label>`; }
+function textField(key, label, value, rows) {
+  return lbl(label) + (rows
+    ? `<textarea data-f="${key}" rows="${rows}" style="width:100%;margin-bottom:10px">${escapeHtml(value || "")}</textarea>`
+    : `<input type="text" data-f="${key}" value="${escapeHtml(value || "")}" style="width:100%;margin-bottom:10px">`);
+}
+function dateField(key, label, value) {
+  return `<div>${lbl(label)}<input type="date" data-f="${key}" value="${escapeHtml(value || "")}" style="width:100%;margin-bottom:10px"></div>`;
+}
+
+function openVideoForm(id, presetClientId) {
+  if (!CLIENTS.length) { alert("Add a client on the All Clients page first."); return; }
+  const x = id ? findVideo(id) : null;
+  if (id && !x) return;
+  const v = x ? x.video : { status: "concept_pending", platform: [], editorBrief: {}, clientId: presetClientId || (globalClientFilter !== "all" ? globalClientFilter : CLIENTS[0].id) };
+  const eb = v.editorBrief || {};
+  const clientField = x
+    ? `${lbl("Client")}<div style="margin-bottom:10px">${escapeHtml(x.client.name)}</div>`
+    : `${lbl("Client")}<select data-f="clientId" style="width:100%;margin-bottom:10px">${CLIENTS.map(c => `<option value="${c.id}" ${c.id === v.clientId ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}</select>`;
+  const statusOpts = STATUS_ORDER.concat(["rejected"]).map(s => `<option value="${s}" ${s === v.status ? "selected" : ""}>${escapeHtml(STATUS_LABEL[s] || s)}</option>`).join("");
+  const editorOpts = `<option value="">— none —</option>` + EDITORS.filter(e => e.active || e.id === v.editorId)
+    .map(e => `<option value="${e.id}" ${e.id === v.editorId ? "selected" : ""}>${escapeHtml(e.name)}${e.active ? "" : " (inactive)"}</option>`).join("");
+
+  const box = openModal(`
+    <h2>${x ? "Edit video" : "New video"}</h2>
+    ${clientField}
+    ${textField("title", "Title", v.title)}
+    <div class="grid-2">
+      <div>${textField("platform", "Platforms (comma-separated)", (v.platform || []).join(", "))}</div>
+      <div>${lbl("Status")}<select data-f="status" style="width:100%;margin-bottom:10px">${statusOpts}</select></div>
+    </div>
+    <div class="grid-2">
+      ${dateField("dueToFilm", "Due to film", v.dueToFilm)}
+      ${dateField("postDate", "Post date", v.postDate)}
+    </div>
+    <div class="grid-2">
+      ${dateField("dueToEdit", "Due to edit", v.dueToEdit)}
+      <div>${lbl("Editor")}<select data-f="editorId" style="width:100%;margin-bottom:10px">${editorOpts}</select></div>
+    </div>
+    <h3 style="font-size:0.85rem;margin:14px 0 8px;color:var(--sub)">What the client sees</h3>
+    ${textField("overview", "Overview (one or two sentences)", v.overview, 2)}
+    ${textField("hook", "Hook", v.hook, 2)}
+    ${textField("body", "Script / talking points", v.body, 4)}
+    ${textField("filmingDirection", "Filming instructions", v.filmingDirection, 3)}
+    ${textField("caption", "Caption", v.caption, 3)}
+    ${textField("note", "Note (shown to the client and the editor)", v.note, 2)}
+    <h3 style="font-size:0.85rem;margin:14px 0 8px;color:var(--sub)">Editor brief (never shown to the client)</h3>
+    ${BRIEF_FIELDS.map(([k, label]) => textField("brief." + k, label, eb[k], 2)).join("")}
+    <div class="auth-error" id="vfError"></div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="primary" id="vfSave">${x ? "Save changes" : "Create video"}</button>
+      <button onclick="closeVideoModal()">Cancel</button>
+      ${x ? `<button class="reject" id="vfDelete" style="margin-left:auto">Delete</button>` : ""}
+    </div>
+  `);
+
+  // 7-day rule, as a suggestion only: fill due-to-edit from the post date
+  // when it's still empty. Never overwrites a date someone typed.
+  const postEl = box.querySelector('[data-f="postDate"]'), editEl = box.querySelector('[data-f="dueToEdit"]');
+  postEl.addEventListener("change", () => { if (postEl.value && !editEl.value) editEl.value = addDaysISO(postEl.value, -7); });
+
+  box.querySelector("#vfSave").onclick = async () => {
+    const err = box.querySelector("#vfError");
+    err.textContent = "";
+    const fields = {}, brief = Object.assign({}, eb);
+    box.querySelectorAll("[data-f]").forEach(el => {
+      const k = el.dataset.f, val = el.value.trim();
+      if (k.startsWith("brief.")) brief[k.slice(6)] = val || null;
+      else if (k === "platform") fields.platform = val.split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+      else fields[k] = val;
+    });
+    fields.editorBrief = brief;
+    if (!fields.title) { err.textContent = "Give it a title first."; return; }
+    if (fields.status === "with_editor" && !fields.editorId) { err.textContent = "A video with the editor needs an editor assigned."; return; }
+    const saveBtn = box.querySelector("#vfSave");
+    saveBtn.disabled = true; saveBtn.textContent = "Saving…";
+    const row = videoFieldsToRow(fields);
+    const res = x
+      ? await sbClient.from("social_videos").update(row).eq("id", x.video.id).select("id")
+      : await sbClient.from("social_videos").insert(row).select("id");
+    saveBtn.disabled = false; saveBtn.textContent = x ? "Save changes" : "Create video";
+    if (res.error) { err.textContent = res.error.message; return; }
+    if (!res.data || !res.data.length) { err.textContent = "Nothing was saved — that video may have been deleted."; return; }
+    closeVideoModal();
+    await loadLiveData();
+  };
+  const del = box.querySelector("#vfDelete");
+  if (del) del.onclick = async () => {
+    if (!confirm(`Delete "${x.video.title || "this video"}" permanently? Its status history is deleted too.`)) return;
+    const { error } = await sbClient.from("social_videos").delete().eq("id", x.video.id);
+    if (error) { box.querySelector("#vfError").textContent = error.message; return; }
+    closeVideoModal();
+    await loadLiveData();
+  };
+}
+document.getElementById("newVideoBtn").onclick = () => openVideoForm(null);
+
+// ---------- bulk add (plan a month with Claude, paste it in) ----------
+// Creates many concepts in one insert. They land as concept_pending and
+// stay invisible to the client until approved (one at a time, or "Approve
+// all" on Content Review) — bulk-adding never skips gate 1.
+const BULK_PROMPT = `Turn the content plan we just made into a JSON array I can paste into my dashboard. One object per video, using exactly these keys (leave out any you don't have):
+
+- "title": short working title
+- "platform": array, e.g. ["instagram", "tiktok"]
+- "overview": one or two sentences on what the video is
+- "hook": the opening line
+- "body": script or talking points
+- "filmingDirection": plain-language instructions for the client on how to film it
+- "caption": the post caption
+- "dueToFilm": "YYYY-MM-DD"
+- "postDate": "YYYY-MM-DD"
+
+Output only the JSON array, nothing else.`;
+
+function parseBulk(text) {
+  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
+  let arr;
+  try { arr = JSON.parse(cleaned); } catch (e) { return { error: "That isn't valid JSON — ask Claude to output only the JSON array. (" + e.message + ")" }; }
+  if (!Array.isArray(arr)) arr = [arr];
+  const isDate = d => !d || /^\d{4}-\d{2}-\d{2}$/.test(d);
+  const rows = [], problems = [];
+  arr.forEach((o, i) => {
+    if (!o || typeof o !== "object") { problems.push(`#${i + 1}: not an object`); return; }
+    const title = String(o.title || "").trim();
+    if (!title) { problems.push(`#${i + 1}: missing title`); return; }
+    const dates = { dueToFilm: o.dueToFilm || o.due_to_film || null, postDate: o.postDate || o.post_date || null, dueToEdit: o.dueToEdit || o.due_to_edit || null };
+    const bad = Object.entries(dates).filter(([, d]) => !isDate(d)).map(([k]) => k);
+    if (bad.length) { problems.push(`"${title}": ${bad.join(", ")} must be YYYY-MM-DD`); return; }
+    if (dates.postDate && !dates.dueToEdit) dates.dueToEdit = addDaysISO(dates.postDate, -7);
+    const platform = Array.isArray(o.platform) ? o.platform : String(o.platform || "").split(",");
+    rows.push({
+      title, platform: platform.map(p => String(p).trim().toLowerCase()).filter(Boolean),
+      overview: o.overview || null, hook: o.hook || null, body: o.body || o.script || null,
+      filmingDirection: o.filmingDirection || o.filmingInstructions || o.filming_instructions || null,
+      caption: o.caption || null, ...dates, status: "concept_pending",
+    });
+  });
+  return { rows, problems };
+}
+
+function openBulkAdd(presetClientId) {
+  if (!CLIENTS.length) { alert("Add a client on the All Clients page first."); return; }
+  const selected = presetClientId || (globalClientFilter !== "all" ? globalClientFilter : CLIENTS[0].id);
+  const box = openModal(`
+    <h2>Bulk add concepts</h2>
+    <p class="meta" style="margin:0 0 12px">Plan the month with Claude, then ask it for the JSON below and paste it here. Every concept is created as a pending concept — the client sees them only after you approve.</p>
+    ${lbl("Client")}<select id="bkClient" style="width:100%;margin-bottom:10px">${CLIENTS.map(c => `<option value="${c.id}" ${c.id === selected ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}</select>
+    <button id="bkCopyPrompt" style="margin-bottom:10px">Copy the prompt to give Claude</button>
+    ${lbl("Paste Claude's JSON here")}<textarea id="bkText" rows="12" style="width:100%;margin-bottom:10px;font-family:monospace;font-size:0.8rem" placeholder='[{"title": "...", "hook": "...", "filmingDirection": "...", "dueToFilm": "2026-10-06", "postDate": "2026-10-14"}]'></textarea>
+    <div id="bkPreview" class="meta" style="margin-bottom:10px"></div>
+    <div class="auth-error" id="bkError"></div>
+    <div style="display:flex;gap:8px"><button class="primary" id="bkSave" disabled>Add concepts</button><button onclick="closeVideoModal()">Cancel</button></div>
+  `);
+  const text = box.querySelector("#bkText"), preview = box.querySelector("#bkPreview"), save = box.querySelector("#bkSave"), err = box.querySelector("#bkError");
+  box.querySelector("#bkCopyPrompt").onclick = async e => {
+    try { await navigator.clipboard.writeText(BULK_PROMPT); e.target.textContent = "Copied ✓ — paste it to Claude"; }
+    catch (x) { text.value = BULK_PROMPT; e.target.textContent = "Couldn't copy — the prompt is in the box below"; }
+  };
+  let parsed = null;
+  text.addEventListener("input", () => {
+    err.textContent = "";
+    if (!text.value.trim()) { preview.innerHTML = ""; save.disabled = true; return; }
+    parsed = parseBulk(text.value);
+    if (parsed.error) { preview.innerHTML = ""; err.textContent = parsed.error; save.disabled = true; return; }
+    preview.innerHTML = `<b>${parsed.rows.length} concept(s) ready:</b><br>` +
+      parsed.rows.map(r => `• ${escapeHtml(r.title)}${r.dueToFilm ? " — film " + escapeHtml(r.dueToFilm) : ""}${r.postDate ? ", post " + escapeHtml(r.postDate) : ""}`).join("<br>") +
+      (parsed.problems.length ? `<br><span style="color:var(--red)">Skipped ${parsed.problems.length}:<br>${parsed.problems.map(escapeHtml).join("<br>")}</span>` : "");
+    save.disabled = !parsed.rows.length;
+  });
+  save.onclick = async () => {
+    const clientId = box.querySelector("#bkClient").value;
+    save.disabled = true; save.textContent = "Adding…";
+    const rows = parsed.rows.map(r => videoFieldsToRow(Object.assign({ clientId }, r)));
+    const { data, error } = await sbClient.from("social_videos").insert(rows).select("id");
+    if (error) { err.textContent = error.message; save.disabled = false; save.textContent = "Add concepts"; return; }
+    closeVideoModal();
+    globalClientFilter = clientId;
+    await loadLiveData();
+    alert(`Added ${data.length} concept(s). Review them on Content Review, then approve to send them to the client.`);
+  };
+}
+document.getElementById("bulkAddBtn").onclick = () => openBulkAdd(null);
+
+// ---------- client filter ----------
 function renderGlobalClientFilter() {
-  const chips = [{ client: "all", displayName: "All clients" }, ...CLIENTS];
+  const chips = [{ id: "all", name: "All clients" }, ...CLIENTS];
   document.getElementById("globalClientFilter").innerHTML = chips.map(c =>
-    `<div class="chip ${globalClientFilter === c.client ? "active" : ""}" data-c="${escapeHtml(c.client)}">${escapeHtml(c.displayName)}</div>`
-  ).join("");
+    `<div class="chip ${globalClientFilter === c.id ? "active" : ""}" data-c="${c.id}">${escapeHtml(c.name)}</div>`).join("");
   document.querySelectorAll("#globalClientFilter .chip").forEach(el => el.onclick = () => { globalClientFilter = el.dataset.c; renderAll(); });
 
   const banner = document.getElementById("globalClientBanner");
-  if (globalClientFilter === "all") { banner.innerHTML = ""; return; }
-  const client = CLIENTS.find(c => c.client === globalClientFilter);
+  const client = CLIENT_BY_ID[globalClientFilter];
   if (!client) { banner.innerHTML = ""; return; }
-  if (!client.portalUrl) {
-    banner.innerHTML = `<div class="card" style="margin-bottom:18px"><b>${escapeHtml(client.displayName)}</b><div class="meta">No live portal link on file for this client yet — add <code>portalUrl</code> to their config.json to unlock adding/editing videos here.</div></div>`;
-    return;
-  }
-  const editUrl = quickLink(client, {});
   banner.innerHTML = `
     <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px">
-      <div><b>${escapeHtml(client.displayName)}</b><div class="meta">Every page below is filtered to just this client.</div></div>
+      <div><b>${escapeHtml(client.name)}</b><div class="meta">${escapeHtml(client.clientSystem)} · every page below is filtered to just this client</div></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button id="newIdeaBtn">+ New video idea</button>
-        <a class="btn primary" href="${editUrl}" target="_blank" rel="noopener">🔧 Add / edit videos for ${escapeHtml(client.displayName)}</a>
+        <button class="primary" onclick="openVideoForm(null,'${client.id}')">+ New video for ${escapeHtml(client.name)}</button>
+        <button onclick="openBulkAdd('${client.id}')">📋 Bulk add concepts</button>
+        <a class="btn" href="/clients/${encodeURIComponent(client.slug)}" target="_blank" rel="noopener">Open portal</a>
       </div>
-    </div>
-    <div class="card" id="newIdeaPanel" style="display:none;margin-bottom:18px"></div>
-  `;
-  document.getElementById("newIdeaBtn").onclick = () => openNewIdeaPanel(client);
-}
-
-// A quick "video idea" composer, right where the client is already
-// selected. Submitting doesn't save anything here — it opens that
-// client's own live portal with the new video already filled in and
-// publishes the moment that tab loads. See "quick actions" in
-// client-portal.template.html and dashboards/template/README.md.
-const NEW_IDEA_FIELDS = [
-  { key: "title", label: "Title", type: "text" },
-  { key: "platform", label: "Platforms (comma-separated)", type: "list" },
-  { key: "hook", label: "Hook", type: "textarea", rows: 2 },
-  { key: "overview", label: "Overview", type: "textarea", rows: 2 },
-  { key: "filmingDirection", label: "Filming direction", type: "textarea", rows: 3 },
-  { key: "caption", label: "Caption", type: "textarea", rows: 2 },
-];
-function newIdeaFieldHtml(f) {
-  const label = `<label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">${escapeHtml(f.label)}</label>`;
-  if (f.type === "textarea") return label + `<textarea data-f="${f.key}" data-type="text" rows="${f.rows||2}" style="width:100%;margin-bottom:10px"></textarea>`;
-  return label + `<input type="text" data-f="${f.key}" data-type="${f.type}" style="width:100%;margin-bottom:10px">`;
-}
-function openNewIdeaPanel(client) {
-  const panel = document.getElementById("newIdeaPanel");
-  const showing = panel.style.display !== "none";
-  if (showing) { panel.style.display = "none"; return; }
-  panel.innerHTML = `<h2 style="font-size:1rem;margin:0 0 14px">New video idea for ${escapeHtml(client.displayName)}</h2>` +
-    NEW_IDEA_FIELDS.map(newIdeaFieldHtml).join("") +
-    `<div style="display:flex;gap:8px"><button class="primary" data-send>Create & send live</button><button data-cancel>Cancel</button></div>`;
-  panel.style.display = "block";
-  panel.querySelector("[data-cancel]").onclick = () => { panel.style.display = "none"; };
-  panel.querySelector("[data-send]").onclick = () => {
-    const fields = { status: "concept_pending" };
-    panel.querySelectorAll("[data-f]").forEach(el => {
-      fields[el.dataset.f] = el.dataset.type === "list" ? el.value.split(",").map(s=>s.trim()).filter(Boolean) : el.value;
-    });
-    if (!fields.title) { alert("Give it a title first."); return; }
-    const payload = JSON.stringify(fields);
-    const url = quickLink(client, { quickAdd: payload });
-    window.open(url, "_blank");
-    panel.style.display = "none";
-  };
-}
-
-function effectiveVideo(client, video, overrides) {
-  const o = overrides[client.client + ":" + video.id];
-  if (!o) return video;
-  const merged = Object.assign({}, video);
-  if (o.status != null) merged.status = o.status;
-  if (o.note !== undefined) merged.note = o.note;
-  ["dueToFilm", "dueToEdit", "postDate"].forEach(f => { if (o[f] !== undefined) merged[f] = o[f]; });
-  return merged;
-}
-
-function allVideos() {
-  const overrides = loadOverrides();
-  const out = [];
-  filteredClients().forEach(client => (client.videos || []).forEach(v0 => out.push({ client, video: effectiveVideo(client, v0, overrides) })));
-  return out;
-}
-
-// Local-only fallback — used only for a client with no portalUrl on file
-// yet. Saves to this browser's own view; someone still has to relay it
-// (paste-in status report) for it to reach anyone else.
-function operatorSetStatus(clientSlug, videoId, status, note) {
-  const overrides = loadOverrides();
-  const key = clientSlug + ":" + videoId;
-  overrides[key] = Object.assign({}, overrides[key], { status, note: note !== undefined ? note : (overrides[key] ? overrides[key].note : null) });
-  saveOverrides(overrides);
-  renderAll();
-}
-function operatorRequestRevisions(clientSlug, videoId) {
-  const note = prompt("What needs to change before this goes back to the client?");
-  if (note === null) return;
-  operatorSetStatus(clientSlug, videoId, "with_editor", note);
-}
-
-// Quick actions — the actual live path. This dashboard can't reach into a
-// different client's own portal page from here, so instead of acting
-// here, these open that client's own portal with the action already
-// spelled out in the URL hash (buildHashState, shell.js); the portal runs
-// it against its own localStorage the instant it loads. Whoever opens the
-// link needs their own operator login to actually apply it — see
-// resolveClientPortalAccess in client-portal.template.html. Falls back to
-// the local-only functions above only if that client has no portalUrl yet.
-function quickLink(client, params) {
-  if (!client || !client.portalUrl) return null;
-  const base = client.portalUrl.split("#")[0].split("?")[0];
-  return base + buildHashState(params);
-}
-function goLiveApprove(clientSlug, videoId) {
-  const client = CLIENTS.find(c => c.client === clientSlug);
-  const url = quickLink(client, { quickApprove: videoId });
-  if (url) window.open(url, "_blank");
-  else operatorSetStatus(clientSlug, videoId, "client_review");
-}
-function goLiveRevise(clientSlug, videoId) {
-  const note = prompt("What needs to change before this goes back to the client?");
-  if (note === null) return;
-  const client = CLIENTS.find(c => c.client === clientSlug);
-  const url = quickLink(client, { quickRevise: videoId, note: note });
-  if (url) window.open(url, "_blank");
-  else operatorSetStatus(clientSlug, videoId, "with_editor", note);
-}
-function goLivePost(clientSlug, videoId) {
-  const client = CLIENTS.find(c => c.client === clientSlug);
-  const url = quickLink(client, { quickPost: videoId });
-  if (url) window.open(url, "_blank");
-  else operatorSetStatus(clientSlug, videoId, "posted");
-}
-
-function rowHtml(client, video) {
-  const meta = [client.displayName, (video.platform||[]).join(" · "),
-    video.dueToFilm ? "film by " + video.dueToFilm : null,
-    video.postDate ? "post " + video.postDate : null]
-    .filter(Boolean).join(" · ");
-  return `<div class="row">
-    <div class="left"><b class="video-card" style="display:inline-block" onclick="openOperatorVideoModal('${escapeHtml(client.client)}','${escapeHtml(video.id)}')">${escapeHtml(video.title || video.id)}</b><div class="meta">${escapeHtml(meta)}${video.note ? " · " + escapeHtml(video.note) : ""}</div></div>
-    ${statusBadge(video.status, STATUS_LABEL)}
-  </div>`;
-}
-
-// Same shared modal as the client/editor dashboards. The operator only
-// gets action buttons for the gate they hold (edit approval); everything
-// else is shown for visibility, since acting on it isn't the operator's to do.
-function openOperatorVideoModal(clientSlug, videoId) {
-  const client = CLIENTS.find(c => c.client === clientSlug);
-  if (!client) return;
-  const overrides = loadOverrides();
-  const video0 = (client.videos || []).find(v => v.id === videoId);
-  if (!video0) return;
-  const video = effectiveVideo(client, video0, overrides);
-  let actionsHtml = "";
-  if (video.status === "in_review") {
-    actionsHtml = `<button class="primary" onclick="goLiveApprove('${clientSlug}','${videoId}');closeVideoModal()">Approve</button>
-      <button class="reject" onclick="goLiveRevise('${clientSlug}','${videoId}');closeVideoModal()">Request revisions</button>`;
-  }
-  openVideoModal(client, video, { actionsHtml });
+    </div>`;
 }
 
 // ---------- Home ----------
+function isOverdue(v) {
+  const t = todayISO();
+  return (v.dueToFilm && v.dueToFilm < t && ["concept_pending","to_film"].includes(v.status))
+    || (v.dueToEdit && v.dueToEdit < t && ["filmed","ready_to_edit","with_editor"].includes(v.status))
+    || (v.postDate && v.postDate < t && !["posted","rejected"].includes(v.status));
+}
 function renderHome() {
   document.getElementById("asOf").textContent = "As of " + new Date().toLocaleString();
-  const vids = allVideos();
-  const overdue = vids.filter(x => (x.video.dueToFilm && x.video.dueToFilm < todayISO() && ["to_film","filmed"].includes(x.video.status))
-    || (x.video.dueToEdit && x.video.dueToEdit < todayISO() && x.video.status === "with_editor")
-    || (x.video.postDate && x.video.postDate < todayISO() && x.video.status !== "posted"));
-  const inReview = vids.filter(x => x.video.status === "in_review");
+  const vids = filteredVideos();
+  const overdue = vids.filter(x => isOverdue(x.video));
+  const mine = vids.filter(x => operatorActionsHtml(x));
+  const waitingOnClient = vids.filter(x => isWaitingOnClient(x));
   const withEditor = vids.filter(x => x.video.status === "with_editor");
-  const waitingOnClient = vids.filter(x => ["concept_pending","client_review"].includes(x.video.status));
-  const pendingConcepts = filteredClients().reduce((n, c) => n + (c.pendingConcepts || []).filter(p => p.status === "pending_approval").length, 0);
-
   const stats = [
-    { label: globalClientFilter === "all" ? "Active clients" : "Client", value: globalClientFilter === "all" ? filteredClients().length : filteredClients()[0].displayName },
-    { label: "Overdue", value: overdue.length, tone: overdue.length ? "down" : "up" },
-    { label: "Awaiting my approval", value: inReview.length + pendingConcepts },
+    { label: globalClientFilter === "all" ? "Active clients" : "Client", value: globalClientFilter === "all" ? CLIENTS.filter(c => c.status === "active").length : escapeHtml(CLIENT_BY_ID[globalClientFilter].name) },
+    { label: "Overdue", value: overdue.length },
+    { label: "Waiting on me", value: mine.length },
     { label: "Waiting on client", value: waitingOnClient.length },
     { label: "With editor", value: withEditor.length },
   ];
-  document.getElementById("homeStats").innerHTML = stats.map(s => `
-    <div class="stat-card"><div class="label">${escapeHtml(s.label)}</div><div class="value">${s.value}</div></div>
-  `).join("");
+  document.getElementById("homeStats").innerHTML = stats.map(s => `<div class="stat-card"><div class="label">${escapeHtml(s.label)}</div><div class="value">${s.value}</div></div>`).join("");
+  document.getElementById("overdueList").innerHTML = overdue.length ? overdue.map(x => rowHtml(x)).join("") : '<div class="empty">Nothing overdue.</div>';
 
-  // Heuristic, not a stored fact — see dashboards/template/README.md.
-  const needsIdeas = filteredClients().filter(c => {
-    const pendingApproved = (c.pendingConcepts || []).filter(p => p.status === "pending_approval").length;
-    const upcoming = (c.videos || []).filter(v => ["concept_pending","to_film"].includes(v.status)).length;
-    return pendingApproved === 0 && upcoming < 3;
-  });
+  const needsIdeas = filteredClients().filter(c => c.status === "active" &&
+    VIDEOS.filter(x => x.client.id === c.id && ["concept_pending","to_film"].includes(x.video.status)).length < 3);
   document.getElementById("needsIdeasList").innerHTML = needsIdeas.length
-    ? needsIdeas.map(c => `<div class="row"><div class="left"><b>${escapeHtml(c.displayName)}</b>
-        <div class="meta">${(c.videos||[]).filter(v=>["concept_pending","to_film"].includes(v.status)).length} video(s) queued, 0 concepts pending approval</div></div></div>`).join("")
+    ? needsIdeas.map(c => {
+        const n = VIDEOS.filter(x => x.client.id === c.id && ["concept_pending","to_film"].includes(x.video.status)).length;
+        return `<div class="row"><div class="left"><b>${escapeHtml(c.name)}</b><div class="meta">${n} video(s) at concept or filming stage</div></div>
+          ${smallBtn("+ New video", `openVideoForm(null,'${c.id}')`)}</div>`;
+      }).join("")
     : '<div class="empty">Everyone has enough queued up.</div>';
 }
 
-// ---------- Calendar + Schedule: LIVE, from social_videos -----------------
-// Unlike Content Review/Ready to Post/Home below (still config.json +
-// localStorage, unchanged), these two pages read straight from
-// social_videos — see loadLiveData(). liveFilteredVideos() applies the
-// same globalClientFilter chip everything else uses, just against live
-// data instead of CLIENTS.
-function liveFilteredVideos() {
-  return globalClientFilter === "all" ? LIVE_VIDEOS : LIVE_VIDEOS.filter(x => x.client.client === globalClientFilter);
-}
-
-// Read-only click-through — the in_review approve/revise action stays on
-// Content Review, which is unchanged and still config.json-driven this
-// round, so it isn't wired here.
-function openLiveVideoModal(videoId) {
-  const match = LIVE_VIDEOS.find(x => x.video.id === videoId);
-  if (!match) return;
-  openVideoModal(match.client, match.video, {});
-}
-
-function renderCalendar() {
-  const vids = liveFilteredVideos();
-  const now = new Date();
-  const first = new Date(now.getFullYear(), now.getMonth(), 1);
-  const startDow = first.getDay();
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-
-  const byDay = {};
-  vids.forEach(x => {
-    const d = x.video.dueToFilm || x.video.postDate;
-    if (!d) return;
-    (byDay[d] = byDay[d] || []).push(x);
-  });
-
-  let html = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => `<div class="cal-dow">${d}</div>`).join("");
-  for (let i = 0; i < startDow; i++) html += `<div></div>`;
-  for (let day = 1; day <= daysInMonth; day++) {
-    const dateStr = new Date(now.getFullYear(), now.getMonth(), day).toISOString().slice(0,10);
-    const items = byDay[dateStr] || [];
-    const isToday = dateStr === todayISO();
-    html += `<div class="cal-cell ${isToday ? "today" : ""}"><div class="daynum">${day}</div>` +
-      items.slice(0,3).map(x => `<div class="cal-chip video-card" style="background:color-mix(in srgb, var(--status-${x.video.status}) 20%, transparent); color:var(--status-${x.video.status})" title="${escapeHtml(x.video.title||x.video.id)}" onclick="openLiveVideoModal('${escapeHtml(x.video.id)}')">${escapeHtml(x.client.displayName)}: ${escapeHtml(x.video.title||x.video.id)}</div>`).join("") +
-      (items.length > 3 ? `<div class="cal-chip" style="color:var(--sub)">+${items.length-3} more</div>` : "") +
-      `</div>`;
-  }
-  document.getElementById("calGrid").innerHTML = html;
-}
-
-function renderSchedule() {
-  const vids = liveFilteredVideos();
-  const tbody = document.getElementById("scheduleRows");
-  document.getElementById("scheduleEmpty").style.display = vids.length ? "none" : "block";
-  tbody.innerHTML = vids.map(({ client, video }) => `
-    <tr>
-      <td><b>${escapeHtml(video.title || video.id)}</b></td>
-      <td>${escapeHtml(client.displayName)}</td>
-      <td>${statusBadge(video.status, STATUS_LABEL)}</td>
-      <td>${liveDateInput(video.id, "dueToFilm", video.dueToFilm)}</td>
-      <td>${liveDateInput(video.id, "dueToEdit", video.dueToEdit)}</td>
-      <td>${liveDateInput(video.id, "postDate", video.postDate)}</td>
-    </tr>
-  `).join("");
-}
-function liveDateInput(videoId, field, value) {
-  return `<input type="date" value="${value || ""}" style="font-size:0.82rem;padding:5px 6px" onchange="liveSetDate('${videoId}','${field}', this.value)">`;
-}
-// Writes straight to social_videos — no localStorage, no status-report
-// relay. Unlike the git-driven pages, there's no consumer for a report on
-// this data (calendar-planner only touches config.json), so leaving this
-// local would just be a dead end; operators already have full RLS write
-// access to social_videos, so there's nothing to route around.
-const LIVE_DATE_COLUMN = { dueToFilm: "due_to_film", dueToEdit: "due_to_edit", postDate: "post_date" };
-async function liveSetDate(videoId, field, value) {
-  const column = LIVE_DATE_COLUMN[field];
-  const { error } = await sbClient.from("social_videos").update({ [column]: value || null }).eq("id", videoId);
-  if (error) { alert("Couldn't save that date: " + error.message); }
-  await loadLiveData();
-}
-
 // ---------- Content Review ----------
+function isWaitingOnClient(x) {
+  const v = x.video, self = x.client.clientSystem === "self-serve";
+  return (self && v.status === "concept_pending" && v.conceptApprovedAt)
+    || (self && ["to_film","filmed"].includes(v.status))
+    || v.status === "client_review";
+}
+function listOrEmpty(elId, items, rightFn, emptyText) {
+  document.getElementById(elId).innerHTML = items.length ? items.map(x => rowHtml(x, rightFn ? rightFn(x) : null)).join("") : `<div class="empty">${emptyText}</div>`;
+}
+function pendingConcepts() {
+  return filteredVideos().filter(x => x.video.status === "concept_pending" && !x.video.conceptApprovedAt && x.client.clientSystem === "self-serve");
+}
 function renderReview() {
-  const concepts = [];
-  filteredClients().forEach(c => (c.pendingConcepts || []).filter(p => p.status === "pending_approval").forEach(p => concepts.push({ client: c, concept: p })));
-  document.getElementById("conceptsList").innerHTML = concepts.length ? concepts.map(x => `
-    <div class="row"><div class="left"><b>${escapeHtml(x.concept.title)}</b>
-    <div class="meta">${escapeHtml(x.client.displayName)} · Hook: ${escapeHtml(x.concept.hook||"—")}</div></div>
-    <span class="badge" style="background:rgba(245,158,11,0.15);color:#fbbf24">Pending</span></div>
-  `).join("") : '<div class="empty">Nothing waiting.</div>';
+  const vids = filteredVideos();
+  const pending = pendingConcepts();
+  document.getElementById("approveAllWrap").innerHTML = pending.length > 1
+    ? `<div style="margin-bottom:10px">${smallBtn(`Approve all ${pending.length} — send to ${globalClientFilter === "all" ? "clients" : escapeHtml(CLIENT_BY_ID[globalClientFilter].name)}`, "approveAllConcepts(this)", "primary")}</div>` : "";
+  listOrEmpty("conceptsList", vids.filter(x => x.video.status === "concept_pending" && !x.video.conceptApprovedAt),
+    x => operatorActionsHtml(x) + smallBtn("✏️ Edit", `openVideoForm('${x.video.id}')`), "No concepts waiting.");
+  listOrEmpty("toEditorList", vids.filter(x => x.video.status === "ready_to_edit" || (x.video.status === "filmed" && x.client.clientSystem === "concierge")),
+    x => operatorActionsHtml(x), "Nothing waiting for an editor.");
+  listOrEmpty("editsList", vids.filter(x => x.video.status === "in_review"), x => operatorActionsHtml(x), "No edits waiting.");
+  listOrEmpty("clientWaitingList", vids.filter(isWaitingOnClient), null, "Nothing waiting on a client.");
+  listOrEmpty("withEditorList", vids.filter(x => x.video.status === "with_editor"), null, "Nothing with an editor.");
+}
 
-  const edits = allVideos().filter(x => x.video.status === "in_review");
-  document.getElementById("editsList").innerHTML = edits.length ? edits.map(x => `
-    <div class="row"><div class="left"><b>${escapeHtml(x.video.title||x.video.id)}</b>
-    <div class="meta">${escapeHtml(x.client.displayName)} · ${(x.video.platform||[]).join(" · ")}</div></div>
-    <div style="display:flex;gap:6px">
-      <button style="font-size:0.78rem;padding:5px 10px" onclick="goLiveApprove('${x.client.client}','${x.video.id}')">Approve</button>
-      <button class="reject" style="font-size:0.78rem;padding:5px 10px" onclick="goLiveRevise('${x.client.client}','${x.video.id}')">Request revisions</button>
-    </div></div>
-  `).join("") : '<div class="empty">Nothing waiting.</div>';
+// ---------- Schedule ----------
+let scheduleStatus = "open";
+function renderSchedule() {
+  const filters = [["open", "In progress"], ["all", "All"], ["posted", "Posted"], ["rejected", "Rejected"]];
+  document.getElementById("scheduleStatusFilter").innerHTML = filters.map(([k, l]) => `<div class="chip ${scheduleStatus === k ? "active" : ""}" data-s="${k}">${l}</div>`).join("");
+  document.querySelectorAll("#scheduleStatusFilter .chip").forEach(el => el.onclick = () => { scheduleStatus = el.dataset.s; renderSchedule(); });
+  const vids = filteredVideos().filter(x => scheduleStatus === "all" ? true
+    : scheduleStatus === "open" ? !["posted","rejected"].includes(x.video.status) : x.video.status === scheduleStatus);
+  document.getElementById("scheduleEmpty").style.display = vids.length ? "none" : "block";
+  document.getElementById("scheduleRows").innerHTML = vids.map(({ client, video }) => `
+    <tr>
+      <td><b class="video-card" style="display:inline-block" onclick="openVideoForm('${video.id}')">${escapeHtml(video.title || "(untitled)")}</b></td>
+      <td>${escapeHtml(client.name)}</td>
+      <td>${statusBadge(video.status, STATUS_LABEL)}</td>
+      <td>${escapeHtml(video.assignedEditor || "—")}</td>
+      <td>${dateInput(video.id, "dueToFilm", video.dueToFilm)}</td>
+      <td>${dateInput(video.id, "dueToEdit", video.dueToEdit)}</td>
+      <td>${dateInput(video.id, "postDate", video.postDate)}</td>
+    </tr>`).join("");
+}
+function dateInput(id, field, value) {
+  return `<input type="date" value="${escapeHtml(value || "")}" style="font-size:0.82rem;padding:5px 6px" onchange="liveSetDate('${id}','${field}', this.value)">`;
+}
 
-  const waiting = allVideos().filter(x => ["concept_pending","client_review"].includes(x.video.status));
-  document.getElementById("clientWaitingList").innerHTML = waiting.length ? waiting.map(x => rowHtml(x.client, x.video)).join("") : '<div class="empty">Nothing waiting on a client right now.</div>';
+// ---------- Calendar ----------
+const calState = { offset: 0 };
+function renderCalendar() {
+  const byDay = {};
+  filteredVideos().forEach(x => {
+    if (x.video.dueToFilm) (byDay[x.video.dueToFilm] = byDay[x.video.dueToFilm] || []).push({ x, kind: "🎥 " });
+    if (x.video.postDate) (byDay[x.video.postDate] = byDay[x.video.postDate] || []).push({ x, kind: "📣 " });
+  });
+  renderMonthCalendar(document.getElementById("calGrid"), byDay, ({ x, kind }) =>
+    `<div class="cal-chip video-card" style="background:color-mix(in srgb, var(--status-${x.video.status}) 20%, transparent); color:var(--status-${x.video.status})" title="${escapeHtml(x.video.title || "")}" onclick="openOperatorVideoModal('${x.video.id}')">${kind}${globalClientFilter === "all" ? escapeHtml(x.client.name) + ": " : ""}${escapeHtml(x.video.title || "(untitled)")}</div>`,
+    calState, renderCalendar);
 }
 
 // ---------- Ready to post ----------
 function renderPost() {
-  const ready = allVideos().filter(x => x.video.status === "ready_to_post");
-  document.getElementById("postList").innerHTML = ready.length ? ready.map(x => `
-    <div class="row"><div class="left"><b>${escapeHtml(x.video.title||x.video.id)}</b>
-    <div class="meta">${escapeHtml(x.client.displayName)} · ${(x.video.platform||[]).join(" · ")}${x.video.postDate ? " · target " + escapeHtml(x.video.postDate) : ""}${x.video.caption ? " · “" + escapeHtml(x.video.caption) + "”" : ""}</div></div>
-    <button class="primary" style="font-size:0.78rem;padding:5px 10px" onclick="goLivePost('${escapeHtml(x.client.client)}','${escapeHtml(x.video.id)}')">Mark posted</button>
-    </div>
-  `).join("") : '<div class="empty">Nothing ready to post right now.</div>';
+  const ready = filteredVideos().filter(x => x.video.status === "ready_to_post")
+    .sort((a, b) => (a.video.postDate || "9999").localeCompare(b.video.postDate || "9999"));
+  document.getElementById("postList").innerHTML = ready.length ? ready.map(x => {
+    const v = x.video, f = x.client.driveFolders;
+    return `<div class="card" style="margin-bottom:10px">
+      ${rowHtml(x, smallBtn("Mark posted", `markPosted('${v.id}')`, "primary"))}
+      ${v.caption ? `<div style="margin-top:8px"><b style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Caption</b><div style="white-space:pre-wrap;font-size:0.9rem">${escapeHtml(v.caption)}</div>
+        <button style="font-size:0.75rem;padding:4px 9px;margin-top:6px" onclick="copyCaption('${v.id}', this)">Copy caption</button></div>` : ""}
+      ${f.finalEdits ? `<a class="btn" style="font-size:0.75rem;padding:4px 9px;margin-top:8px" href="${escapeHtml(f.finalEdits)}" target="_blank" rel="noopener">📁 Final edits folder</a>` : ""}
+    </div>`;
+  }).join("") : '<div class="empty">Nothing ready to post right now.</div>';
+}
+async function copyCaption(id, btn) {
+  const x = findVideo(id);
+  try { await navigator.clipboard.writeText(x.video.caption || ""); btn.textContent = "Copied ✓"; }
+  catch (e) { btn.textContent = "Couldn't copy — select it manually"; }
 }
 
-// ---------- FUTURE BUILDS ----------
-// Competitor Tracker, Analytics, and News Consolidator — working code,
-// just not currently reachable: their nav-items and <section>s are pulled
-// (see the "FUTURE BUILDS" comments in the nav and after </main> above).
-// Not called from renderAll() below. To restore one, put its nav-item and
-// <section> back and add its render call back into renderAll().
-
-// ---------- Competitor tracker ----------
-function renderCompetitors() {
-  const showClientCol = globalClientFilter === "all";
-  document.querySelector("#view-competitors thead tr").innerHTML =
-    (showClientCol ? "<th>Client</th>" : "") + "<th>Competitor</th><th>Platforms</th><th>Followers</th><th>Eng. rate</th><th>Posts/wk</th><th>30d growth</th>";
-
-  const comps = [];
-  filteredClients().forEach(client => (client.competitors || []).forEach(c => comps.push({ client, c })));
-  document.getElementById("compRows").innerHTML = comps.map(({ client, c }) => `
-    <tr>
-      ${showClientCol ? `<td>${escapeHtml(client.displayName)}</td>` : ""}
-      <td><b>${escapeHtml(c.name)}</b> <span class="badge tag-${c.tag}">${escapeHtml(c.tag)}</span></td>
-      <td>${(c.platforms||[]).map(p => `<span class="platform-dot" style="background:${platformColor(p)}"></span>${escapeHtml(p)}`).join(" ")}</td>
-      <td>${fmtNum(c.followers)}</td><td>${c.engagementRate}%</td><td>${c.postsPerWeek}</td>
-      <td style="color:${c.growth30d >= 0 ? 'var(--green)' : 'var(--red)'}">${c.growth30d >= 0 ? "+" : ""}${c.growth30d}%</td>
-    </tr>
-  `).join("");
-  document.getElementById("compEmpty").style.display = comps.length ? "none" : "block";
-}
-
-// ---------- Analytics ----------
-function renderAnalytics() {
-  const clients = filteredClients();
-  const showClientPrefix = clients.length > 1;
-  // Group by client+platform so "all clients" shows one series per
-  // client/platform pair instead of merging different clients' followers.
-  const groups = {};
-  clients.forEach(client => (client.analytics || []).forEach(r => {
-    const key = client.client + "|" + r.platform;
-    (groups[key] = groups[key] || { client, platform: r.platform, rows: [] }).rows.push(r);
-  }));
-  Object.values(groups).forEach(g => g.rows.sort((a,b) => a.date.localeCompare(b.date)));
-
-  const latest = Object.values(groups).map(g => g.rows[g.rows.length-1]);
-  const totalFollowers = latest.reduce((n,r) => n + (r.followers||0), 0);
-  const totalImpr = Object.values(groups).reduce((n,g) => n + g.rows.reduce((m,r)=>m+(r.impressions||0),0), 0);
-  const avgEng = latest.length ? (latest.reduce((n,r) => n + (r.engagementRate||0),0) / latest.length).toFixed(1) : "—";
-  document.getElementById("anStats").innerHTML = [
-    { label: "Total followers", value: fmtNum(totalFollowers) },
-    { label: "Total impressions", value: fmtNum(totalImpr) },
-    { label: "Avg. engagement rate", value: avgEng + "%" },
-  ].map(s => `<div class="stat-card"><div class="label">${s.label}</div><div class="value">${s.value}</div></div>`).join("");
-
-  const series = Object.values(groups).map(g => ({
-    name: showClientPrefix ? `${g.client.displayName} · ${g.platform}` : g.platform,
-    color: platformColor(g.platform),
-    points: g.rows.map(r => ({ x: r.date.slice(5), y: r.followers || 0 }))
-  }));
-  const chartEl = document.getElementById("anChart");
-  if (series.length) {
-    drawLineChart(chartEl, series, {});
-    document.getElementById("anLegend").innerHTML = series.map(s => `<span><span class="sw" style="background:${s.color}"></span>${escapeHtml(s.name)}</span>`).join("");
-  } else {
-    chartEl.innerHTML = '<div class="empty">No analytics entered yet.</div>';
-    document.getElementById("anLegend").innerHTML = "";
-  }
-}
-
-// ---------- News ----------
-let newsCategory = "All";
-function renderNews() {
-  const relevant = globalClientFilter === "all" ? NEWS : NEWS.filter(n => !n.relevantClients || n.relevantClients.includes(globalClientFilter));
-  const cats = ["All", ...Array.from(new Set(relevant.map(n => n.category)))];
-  document.getElementById("newsChips").innerHTML = cats.map(c => `<div class="chip ${c === newsCategory ? "active" : ""}" data-c="${c}">${escapeHtml(c)}</div>`).join("");
-  document.querySelectorAll("#newsChips .chip").forEach(el => el.onclick = () => { newsCategory = el.dataset.c; renderNews(); });
-
-  const items = relevant.filter(n => newsCategory === "All" || n.category === newsCategory);
-  document.getElementById("newsList").innerHTML = items.length ? items.map(n => `
-    <div class="row"><div class="left"><b><a href="${n.url}" target="_blank" rel="noopener">${escapeHtml(n.title)}</a></b>
-    <div class="meta">${escapeHtml(n.source)} · ${escapeHtml(n.date)}</div></div>
-    <span class="badge" style="background:var(--card2);color:var(--sub)">${escapeHtml(n.category)}</span></div>
-  `).join("") : '<div class="empty">Nothing filed under this category yet.</div>';
-}
-
-// ---------- Sync ----------
-// A paste can contain more than one report stacked together (the editor
-// dashboard generates one block per client in a single copy) — split on the
-// header line and apply each block independently.
-function applyReportBlock(text, overrides) {
-  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
-  const clientLine = lines.find(l => l.startsWith("Client:"));
-  if (!clientLine) return { applied: 0, bad: [], error: "Could not find a \"Client:\" line." };
-  const clientSlug = clientLine.replace("Client:", "").trim();
-  const client = CLIENTS.find(c => c.client === clientSlug);
-  if (!client) return { applied: 0, bad: [], error: `No configured client matches "${clientSlug}".` };
-
-  const dividerIdx = lines.indexOf("---");
-  const dataLines = dividerIdx >= 0 ? lines.slice(dividerIdx + 1) : [];
-  let applied = 0, bad = [];
-  dataLines.forEach(line => {
-    if (line.startsWith("(no changes") || line.startsWith("(nothing")) return;
-    const parts = line.split("|").map(p => p.trim());
-    if (parts.length < 2) { bad.push(line); return; }
-    const [videoId, statusRaw, note] = parts;
-    const status = statusRaw.toLowerCase();
-    const validVideo = (client.videos || []).some(v => v.id === videoId);
-    // Anything a client portal or the editor dashboard can legitimately report.
-    // in_review = editor marked delivered. concept_pending/with_editor here mean
-    // "sent back with a note" (request changes / request revisions), not a fresh start.
-    const validStatus = ["concept_pending","to_film","filmed","ready_to_edit","rejected","with_editor","client_review","ready_to_post","in_review"].includes(status);
-    if (!validVideo || !validStatus) { bad.push(line); return; }
-    const key = client.client + ":" + videoId;
-    overrides[key] = Object.assign({}, overrides[key], { status, note: note || null });
-    applied++;
-  });
-  return { applied, bad, error: null };
-}
-
-document.getElementById("pasteBtn").onclick = () => {
-  const text = document.getElementById("pasteInput").value.trim();
-  const resultBox = document.getElementById("pasteResult");
-  if (!text) { resultBox.innerHTML = '<span style="color:var(--red)">Paste a report first.</span>'; return; }
-
-  const blocks = text.split(/(?=FULLY SOCIAL OS STATUS REPORT)/).map(b => b.trim()).filter(Boolean);
-  const overrides = loadOverrides();
-  let totalApplied = 0, allBad = [], errors = [];
-  blocks.forEach(block => {
-    const r = applyReportBlock(block, overrides);
-    if (r.error) errors.push(r.error);
-    totalApplied += r.applied;
-    allBad = allBad.concat(r.bad);
-  });
-  saveOverrides(overrides);
-  resultBox.innerHTML = `<span style="color:var(--green)">${totalApplied} update(s) applied${blocks.length > 1 ? ` across ${blocks.length} report(s)` : ""}.</span>` +
-    (errors.length ? `<br><span style="color:var(--red)">${errors.map(escapeHtml).join("<br>")}</span>` : "") +
-    (allBad.length ? `<br><span style="color:var(--red)">${allBad.length} line(s) not understood:<br>${allBad.map(escapeHtml).join("<br>")}</span>` : "");
-  renderAll();
-};
-
-// --- Live data: social_clients + social_videos ----------------------------
-// Two different sources of "client" exist: CLIENTS is every
-// dashboards/clients/<slug>/config.json checked into git, baked in at
-// build time — that's still what drives Content Review/Ready to Post/Home
-// below. LIVE_CLIENTS is every row in social_clients, LIVE_VIDEOS is every
-// row in social_videos (mapped to the client that owns it) — both fetched
-// live, both what Content Calendar/Schedule/All Clients/+New video/+New
-// client actually read and write now. A client or video created here
-// shows up immediately, whether or not anyone's written a config.json.
-let LIVE_CLIENTS = [];
-let LIVE_VIDEOS = []; // [{ client: {client, displayName, driveFolders}, video }]
-
-// Adapts a social_clients row into the {client, displayName, driveFolders}
-// shape rowHtml()/openVideoModal()/etc. already expect from CLIENTS —
-// driveFolders comes from the git config if this client happens to have
-// one on file, since social_drive_folder_links isn't read on this
-// dashboard (only the client portal reads it).
-function liveClientAdapter(c) {
-  const gitMatch = CLIENTS.find(cc => cc.client === c.slug);
-  return { client: c.slug, displayName: c.name, driveFolders: (gitMatch && gitMatch.driveFolders) || {} };
-}
-
-// Reshape a social_videos row into the camelCase shape every render
-// function here already expects from a config.json video — same mapping
-// client-portal.template.html uses for the same reason.
-function fromSupabaseVideoRow(row) {
-  return {
-    id: row.id, title: row.title, platform: row.platform || [], hook: row.hook,
-    overview: row.overview, body: row.body, filmingDirection: row.filming_instructions,
-    caption: row.caption, dueToFilm: row.due_to_film, dueToEdit: row.due_to_edit, postDate: row.post_date,
-    status: row.status, note: row.note, assignedEditor: null, editorBrief: row.editor_brief || {},
-  };
-}
-
-async function loadLiveData() {
-  const [clientsRes, videosRes] = await Promise.all([
-    sbClient.from("social_clients").select("*").order("created_at", { ascending: false }),
-    sbClient.from("social_videos").select("*"),
-  ]);
-  if (clientsRes.error) console.warn("failed to load live clients", clientsRes.error);
-  if (videosRes.error) console.warn("failed to load live videos", videosRes.error);
-  LIVE_CLIENTS = clientsRes.data || [];
-  const clientById = {};
-  LIVE_CLIENTS.forEach(c => { clientById[c.id] = liveClientAdapter(c); });
-  LIVE_VIDEOS = (videosRes.data || [])
-    .filter(row => clientById[row.client_id])
-    .map(row => ({ client: clientById[row.client_id], video: fromSupabaseVideoRow(row) }));
-  renderAllClients();
-  renderCalendar();
-  renderSchedule();
-}
-
-function buildAllClientsList() {
-  const bySlug = {};
-  CLIENTS.forEach(c => {
-    bySlug[c.client] = {
-      slug: c.client, name: c.displayName || c.client, clientSystem: c.clientSystem,
-      planStart: (c.planWindow || {}).start, planEnd: (c.planWindow || {}).end,
-      videoCount: (c.videos || []).length, driveFolders: c.driveFolders || {},
-      inConfig: true, hasLivePortal: false,
-    };
-  });
-  LIVE_CLIENTS.forEach(c => {
-    const existing = bySlug[c.slug];
-    bySlug[c.slug] = Object.assign({}, existing, {
-      slug: c.slug,
-      liveId: c.id,
-      name: (existing && existing.name) || c.name,
-      clientSystem: (existing && existing.clientSystem) || c.client_system,
-      planStart: (existing && existing.planStart) || c.plan_window_start,
-      planEnd: (existing && existing.planEnd) || c.plan_window_end,
-      driveFolders: (existing && existing.driveFolders) || {},
-      inConfig: !!(existing && existing.inConfig),
-      hasLivePortal: true,
-    });
-  });
-  return Object.values(bySlug).sort((a, b) => a.name.localeCompare(b.name));
-}
-
-// Portal links are always built straight from the slug now
-// (location.origin + "/clients/" + slug) rather than a stored portalUrl —
-// every live client's URL is uniform since client-portal.template.html
-// became one shared, dynamic file, so there's no per-client link to keep
-// on file anymore. A client only in CLIENTS (no social_clients row yet)
-// gets no portal link at all — there's genuinely nothing live to open.
+// ---------- All Clients ----------
 function renderAllClients() {
   const el = document.getElementById("allClientsList");
-  if (!el) return;
-  const rows = buildAllClientsList();
-  if (!rows.length) { el.innerHTML = '<div class="empty">No clients yet — add one above.</div>'; return; }
-  el.innerHTML = rows.map(c => {
+  if (!CLIENTS.length) { el.innerHTML = '<div class="empty">No clients yet — add one above.</div>'; return; }
+  el.innerHTML = CLIENTS.map(c => {
     const plan = (c.planStart || "?") + " – " + (c.planEnd || "?");
-    const f = c.driveFolders || {};
-    const driveLinks = ["root","footageUploads","finalEdits","brandVoice","hooks","assets"]
-      .filter(k => f[k]).map(k => `<a class="btn" style="margin-right:6px;font-size:0.75rem;padding:4px 9px" href="${f[k]}" target="_blank" rel="noopener">${k}</a>`).join("");
-    const portalBtn = c.hasLivePortal
-      ? `<a class="btn primary" style="margin-right:6px;font-size:0.75rem;padding:4px 9px" href="${location.origin}/clients/${encodeURIComponent(c.slug)}" target="_blank" rel="noopener">Open portal</a>`
-      : `<span class="badge" style="background:rgba(239,68,68,0.15);color:var(--red)">Not live yet</span>`;
-    // Editing writes to social_clients/social_drive_folder_links, so it
-    // only makes sense for a client that actually has a live row — a
-    // config.json-only client has nothing in Supabase yet to edit.
-    const editBtn = c.hasLivePortal
-      ? `<button style="margin-right:6px;font-size:0.75rem;padding:4px 9px" onclick="openEditClientPanel('${escapeHtml(c.liveId)}')">Edit</button>`
-      : "";
-    const configNote = c.inConfig ? "" : " · not in a config.json yet — Schedule/Content Review/etc. won't show it";
+    const f = c.driveFolders;
+    const driveLinks = ["root","footageUploads","finalEdits","brandVoice","hooks","assets"].filter(k => f[k])
+      .map(k => `<a class="btn" style="margin-right:6px;font-size:0.75rem;padding:4px 9px" href="${escapeHtml(f[k])}" target="_blank" rel="noopener">${k}</a>`).join("");
+    const count = VIDEOS.filter(x => x.client.id === c.id).length;
+    const expired = c.planEnd && c.planEnd < todayISO() ? ` · <span style="color:var(--red)">plan window ended</span>` : "";
     return `<div class="row"><div class="left"><b>${escapeHtml(c.name)}</b>
-      <div class="meta">${escapeHtml(c.slug)} · ${escapeHtml(c.clientSystem || "?")} · plan ${escapeHtml(plan)}${configNote}</div></div>
-      <div>${portalBtn}${editBtn}${driveLinks}</div></div>`;
+      <div class="meta">${escapeHtml(c.slug)} · ${escapeHtml(c.clientSystem)} · ${escapeHtml(c.status)} · plan ${escapeHtml(plan)}${expired} · ${count} video(s)</div></div>
+      <div><a class="btn primary" style="margin-right:6px;font-size:0.75rem;padding:4px 9px" href="/clients/${encodeURIComponent(c.slug)}" target="_blank" rel="noopener">Open portal</a>
+      <button style="margin-right:6px;font-size:0.75rem;padding:4px 9px" onclick="openEditClientPanel('${c.id}')">Edit</button>${driveLinks}</div></div>`;
   }).join("");
 }
 
 // "+ New client" — inserts straight into social_clients (RLS: operators
-// only, "operators manage clients" in 001_social_os_schema.sql). Drive
-// folder links are deliberately NOT part of this form — per CLAUDE.md this
-// repo never creates the actual Drive folders, so those links don't exist
-// yet at the moment a client is created either way, and the portal
-// already renders fine without them (every driveFolders read already
-// guards for a missing link). Add them later, directly in Supabase, once
-// the real folder's been made.
+// only). Drive folder links are added afterwards with "Edit", once the real
+// Drive folder exists — this repo never creates Drive folders itself.
 function slugify(name) {
   return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
@@ -742,18 +623,16 @@ function openNewClientPanel() {
   if (showing) { panel.style.display = "none"; return; }
   panel.innerHTML = `
     <h2 style="font-size:1rem;margin:0 0 14px">New client</h2>
-    <label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Name</label>
-    <input type="text" id="ncName" style="width:100%;margin-bottom:10px">
-    <label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Slug (URL-safe, unique — this becomes /clients/&lt;slug&gt;)</label>
-    <input type="text" id="ncSlug" style="width:100%;margin-bottom:10px">
-    <label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Client system</label>
+    ${lbl("Name")}<input type="text" id="ncName" style="width:100%;margin-bottom:10px">
+    ${lbl("Slug (URL-safe, unique — this becomes /clients/<slug>)")}<input type="text" id="ncSlug" style="width:100%;margin-bottom:10px">
+    ${lbl("Client system")}
     <select id="ncSystem" style="width:100%;margin-bottom:10px">
       <option value="self-serve">Self-serve</option>
       <option value="concierge">Concierge</option>
     </select>
     <div class="grid-2">
-      <div><label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Plan start</label><input type="date" id="ncStart" style="width:100%;margin-bottom:10px"></div>
-      <div><label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Plan end</label><input type="date" id="ncEnd" style="width:100%;margin-bottom:10px"></div>
+      <div>${lbl("Plan start")}<input type="date" id="ncStart" style="width:100%;margin-bottom:10px"></div>
+      <div>${lbl("Plan end")}<input type="date" id="ncEnd" style="width:100%;margin-bottom:10px"></div>
     </div>
     <div class="auth-error" id="ncError"></div>
     <div style="display:flex;gap:8px">
@@ -787,18 +666,14 @@ function openNewClientPanel() {
     }
     panel.style.display = "none";
     await loadLiveData();
-    alert("Client created — portal is live at /clients/" + slug + " right now. Drive folder links can be added later, separately.");
+    alert("Client created — portal is live at /clients/" + slug + " right now. Add Drive folder links with Edit once the folder exists.");
   };
 }
 document.getElementById("newClientBtn").onclick = openNewClientPanel;
 
-// "Edit" — same visual pattern as "+ New client," pre-filled, writing
-// straight to social_clients (update) and social_drive_folder_links
-// (upsert, since a client may not have a folder-links row yet — RLS:
-// "operators manage clients" / "operators manage drive links", both
-// operator-only). Slug isn't editable here: it's the client's portal URL,
-// so changing it is a bigger, more consequential action than this form is
-// meant for — shown as context in the heading, not a field.
+// "Edit" — writes social_clients (update) and social_drive_folder_links
+// (upsert, since a client may not have a folder-links row yet). Slug isn't
+// editable here: it's the client's portal URL.
 const DRIVE_FOLDER_FIELDS = [
   { key: "root", column: "root", label: "Client folder (root)" },
   { key: "footageUploads", column: "footage_uploads", label: "Footage uploads" },
@@ -809,151 +684,76 @@ const DRIVE_FOLDER_FIELDS = [
   { key: "customerData", column: "customer_data", label: "Customer data" },
   { key: "contentIdeas", column: "content_ideas", label: "Content ideas" },
 ];
-async function openEditClientPanel(clientId) {
+function openEditClientPanel(clientId) {
   const panel = document.getElementById("editClientPanel");
   document.getElementById("newClientPanel").style.display = "none";
-  const alreadyShowingThis = panel.style.display !== "none" && panel.dataset.editingId === clientId;
-  if (alreadyShowingThis) { panel.style.display = "none"; return; }
-  const client = LIVE_CLIENTS.find(c => c.id === clientId);
-  if (!client) return;
+  if (panel.style.display !== "none" && panel.dataset.editingId === clientId) { panel.style.display = "none"; return; }
+  const c = CLIENT_BY_ID[clientId];
+  if (!c) return;
   panel.dataset.editingId = clientId;
-  panel.innerHTML = '<div class="empty">Loading…</div>';
-  panel.style.display = "block";
-
-  const { data: folderRow } = await sbClient.from("social_drive_folder_links").select("*").eq("client_id", clientId).maybeSingle();
-  const f = folderRow || {};
-  // A second click could have landed elsewhere while this loaded.
-  if (panel.dataset.editingId !== clientId) return;
-
+  const f = c.driveFolders;
   panel.innerHTML = `
-    <h2 style="font-size:1rem;margin:0 0 14px">Edit ${escapeHtml(client.name)} <span style="font-weight:400;color:var(--sub);font-size:0.78rem">(${escapeHtml(client.slug)})</span></h2>
-    <label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Name</label>
-    <input type="text" id="ecName" value="${escapeHtml(client.name)}" style="width:100%;margin-bottom:10px">
-    <label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Client system</label>
-    <select id="ecSystem" style="width:100%;margin-bottom:10px">
-      <option value="self-serve" ${client.client_system === "self-serve" ? "selected" : ""}>Self-serve</option>
-      <option value="concierge" ${client.client_system === "concierge" ? "selected" : ""}>Concierge</option>
-    </select>
+    <h2 style="font-size:1rem;margin:0 0 14px">Edit ${escapeHtml(c.name)} <span style="font-weight:400;color:var(--sub);font-size:0.78rem">(${escapeHtml(c.slug)})</span></h2>
+    ${lbl("Name")}<input type="text" id="ecName" value="${escapeHtml(c.name)}" style="width:100%;margin-bottom:10px">
     <div class="grid-2">
-      <div><label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Plan start</label><input type="date" id="ecStart" value="${client.plan_window_start || ""}" style="width:100%;margin-bottom:10px"></div>
-      <div><label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Plan end</label><input type="date" id="ecEnd" value="${client.plan_window_end || ""}" style="width:100%;margin-bottom:10px"></div>
+      <div>${lbl("Client system")}<select id="ecSystem" style="width:100%;margin-bottom:10px">
+        <option value="self-serve" ${c.clientSystem === "self-serve" ? "selected" : ""}>Self-serve</option>
+        <option value="concierge" ${c.clientSystem === "concierge" ? "selected" : ""}>Concierge</option>
+      </select></div>
+      <div>${lbl("Status")}<select id="ecStatus" style="width:100%;margin-bottom:10px">
+        ${["active","paused","offboarded"].map(s => `<option value="${s}" ${c.status === s ? "selected" : ""}>${s}</option>`).join("")}
+      </select></div>
+    </div>
+    <div class="grid-2">
+      <div>${lbl("Plan start")}<input type="date" id="ecStart" value="${escapeHtml(c.planStart || "")}" style="width:100%;margin-bottom:10px"></div>
+      <div>${lbl("Plan end")}<input type="date" id="ecEnd" value="${escapeHtml(c.planEnd || "")}" style="width:100%;margin-bottom:10px"></div>
     </div>
     <h2 style="font-size:0.9rem;margin:16px 0 10px">Drive folder links</h2>
-    ${DRIVE_FOLDER_FIELDS.map(d => `
-      <label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">${escapeHtml(d.label)}</label>
-      <input type="text" id="ec_${d.key}" value="${escapeHtml(f[d.column] || "")}" style="width:100%;margin-bottom:10px">
-    `).join("")}
+    ${DRIVE_FOLDER_FIELDS.map(d => lbl(d.label) + `<input type="text" id="ec_${d.key}" value="${escapeHtml(f[d.key] || "")}" style="width:100%;margin-bottom:10px">`).join("")}
     <div class="auth-error" id="ecError"></div>
     <div style="display:flex;gap:8px">
       <button class="primary" id="ecSave">Save changes</button>
       <button id="ecCancel">Cancel</button>
     </div>
   `;
+  panel.style.display = "block";
   document.getElementById("ecCancel").onclick = () => { panel.style.display = "none"; };
   document.getElementById("ecSave").onclick = async () => {
     const errEl = document.getElementById("ecError");
     errEl.textContent = "";
     const name = document.getElementById("ecName").value.trim();
-    const client_system = document.getElementById("ecSystem").value;
-    const plan_window_start = document.getElementById("ecStart").value || null;
-    const plan_window_end = document.getElementById("ecEnd").value || null;
     if (!name) { errEl.textContent = "Name can't be empty."; return; }
     const saveBtn = document.getElementById("ecSave");
     saveBtn.disabled = true; saveBtn.textContent = "Saving…";
-
-    const clientRes = await sbClient.from("social_clients")
-      .update({ name, client_system, plan_window_start, plan_window_end })
-      .eq("id", clientId);
+    const clientRes = await sbClient.from("social_clients").update({
+      name,
+      client_system: document.getElementById("ecSystem").value,
+      status: document.getElementById("ecStatus").value,
+      plan_window_start: document.getElementById("ecStart").value || null,
+      plan_window_end: document.getElementById("ecEnd").value || null,
+    }).eq("id", clientId);
     if (clientRes.error) {
       saveBtn.disabled = false; saveBtn.textContent = "Save changes";
       errEl.textContent = clientRes.error.message;
       return;
     }
-
     const folderPayload = { client_id: clientId };
     DRIVE_FOLDER_FIELDS.forEach(d => { folderPayload[d.column] = document.getElementById("ec_" + d.key).value.trim() || null; });
     const folderRes = await sbClient.from("social_drive_folder_links").upsert(folderPayload, { onConflict: "client_id" });
-
     saveBtn.disabled = false; saveBtn.textContent = "Save changes";
     if (folderRes.error) { errEl.textContent = folderRes.error.message; return; }
-
     panel.style.display = "none";
     await loadLiveData();
   };
 }
-
-// "+ New video" — inserts straight into social_videos (RLS: operators
-// only, "operators manage videos" in 001_social_os_schema.sql). Only
-// title/platform/status/dates — no hook/caption/filming instructions/etc.
-// here; this is for getting a video onto the schedule, not the full
-// content brief, which stays a later step.
-function openNewVideoPanel() {
-  const panel = document.getElementById("newVideoPanel");
-  const showing = panel.style.display !== "none";
-  if (showing) { panel.style.display = "none"; return; }
-  if (!LIVE_CLIENTS.length) {
-    panel.innerHTML = '<div class="empty">No live clients yet — add one on the All Clients page first.</div>';
-    panel.style.display = "block";
-    return;
-  }
-  const clientOptions = LIVE_CLIENTS.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`).join("");
-  const statusOptions = STATUS_ORDER.concat(["rejected"])
-    .map(s => `<option value="${s}" ${s === "concept_pending" ? "selected" : ""}>${escapeHtml((STATUS_LABEL && STATUS_LABEL[s]) || s)}</option>`).join("");
-  panel.innerHTML = `
-    <h2 style="font-size:1rem;margin:0 0 14px">New video</h2>
-    <label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Client</label>
-    <select id="nvClient" style="width:100%;margin-bottom:10px">${clientOptions}</select>
-    <label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Title</label>
-    <input type="text" id="nvTitle" style="width:100%;margin-bottom:10px">
-    <label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Platforms (comma-separated)</label>
-    <input type="text" id="nvPlatform" style="width:100%;margin-bottom:10px" placeholder="instagram, tiktok">
-    <label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Status</label>
-    <select id="nvStatus" style="width:100%;margin-bottom:10px">${statusOptions}</select>
-    <div class="grid-2">
-      <div><label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Due to film</label><input type="date" id="nvDueFilm" style="width:100%;margin-bottom:10px"></div>
-      <div><label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Due to edit</label><input type="date" id="nvDueEdit" style="width:100%;margin-bottom:10px"></div>
-    </div>
-    <label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Post date</label>
-    <input type="date" id="nvPostDate" style="width:100%;margin-bottom:10px">
-    <div class="auth-error" id="nvError"></div>
-    <div style="display:flex;gap:8px">
-      <button class="primary" id="nvSave">Create video</button>
-      <button id="nvCancel">Cancel</button>
-    </div>
-  `;
-  panel.style.display = "block";
-  document.getElementById("nvCancel").onclick = () => { panel.style.display = "none"; };
-  document.getElementById("nvSave").onclick = async () => {
-    const errEl = document.getElementById("nvError");
-    errEl.textContent = "";
-    const client_id = document.getElementById("nvClient").value;
-    const title = document.getElementById("nvTitle").value.trim();
-    const platform = document.getElementById("nvPlatform").value.split(",").map(s => s.trim()).filter(Boolean);
-    const status = document.getElementById("nvStatus").value;
-    const due_to_film = document.getElementById("nvDueFilm").value || null;
-    const due_to_edit = document.getElementById("nvDueEdit").value || null;
-    const post_date = document.getElementById("nvPostDate").value || null;
-    if (!title) { errEl.textContent = "Give it a title first."; return; }
-    const saveBtn = document.getElementById("nvSave");
-    saveBtn.disabled = true; saveBtn.textContent = "Creating…";
-    const { error } = await sbClient.from("social_videos").insert({ client_id, title, platform, status, due_to_film, due_to_edit, post_date });
-    saveBtn.disabled = false; saveBtn.textContent = "Create video";
-    if (error) { errEl.textContent = error.message; return; }
-    panel.style.display = "none";
-    await loadLiveData();
-  };
-}
-document.getElementById("newVideoBtn").onclick = openNewVideoPanel;
 
 function renderAll() {
   renderGlobalClientFilter();
-  renderHome(); renderCalendar(); renderSchedule(); renderReview(); renderPost();
-  // renderCompetitors(); renderAnalytics(); renderNews(); — future builds, see the comment above their definitions.
+  renderHome(); renderAllClients(); renderReview(); renderSchedule(); renderCalendar(); renderPost();
 }
 
-// This dashboard is Tait's own view — only a social_operators login gets
-// past the gate, never an editor or client_user login even if they know
-// the URL.
+// Only a social_operators login gets past the gate — never an editor or
+// client login, even if they know the URL.
 async function resolveOperatorAccess(sb, user) {
   const { data: op } = await sb.from("social_operators").select("*").eq("id", user.id).maybeSingle();
   if (!op) return { ok: false, reason: "This login isn't set up as an operator — ask an existing operator to add you." };
@@ -962,7 +762,7 @@ async function resolveOperatorAccess(sb, user) {
 
 initAuthGate({
   resolveAccess: resolveOperatorAccess,
-  onReady: () => { renderAll(); initRouter("home"); loadLiveData(); },
+  onReady: async () => { initRouter("home"); await loadLiveData(); },
 });
 </script>
 </body>
