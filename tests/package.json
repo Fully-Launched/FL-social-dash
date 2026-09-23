@@ -1,0 +1,13 @@
+{
+  "name": "fl-social-dash-tests",
+  "private": true,
+  "type": "module",
+  "description": "Tests for the Supabase migrations and the three dashboards. Run `npm install` in this folder once, then `npm test`.",
+  "scripts": {
+    "test": "node db.test.mjs && node parity.test.mjs && node flow.test.mjs 1 && node flow.test.mjs 2 && node flow.test.mjs 3"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.0",
+    "jsdom": "^24.0.0"
+  }
+}
