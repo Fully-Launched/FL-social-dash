@@ -27,7 +27,7 @@
   <div id="loadError"></div>
 
   <section class="view active" id="view-queue">
-    <div class="page-head"><h1>To Edit</h1><p>Videos assigned to you. A video isn't done when you deliver it — it's done when it's ready to post. If one comes back here with a note, the owner or the client asked for a change.</p></div>
+    <div class="page-head"><h1>To Edit</h1><p>Videos assigned to you. For each one: download the footage, follow the brief, upload the finished video to the finished-videos folder, then tap <b>Finished — send for review</b> and paste its link. If one comes back here with a note, the owner or the client asked for a change.</p></div>
     <div class="chip-row" id="editorChips"></div>
     <div id="queueList"></div>
   </section>
@@ -101,19 +101,28 @@ function visible() {
 }
 function queue() { return visible().filter(x => x.video.status === "with_editor"); }
 
-async function markDelivered(videoId, btn) {
+// Asks for the Drive link to the finished cut, so the owner and client can
+// watch exactly this video when reviewing it.
+async function finishVideo(videoId, btn) {
+  const url = prompt("Paste the Google Drive link to the finished video (make sure it's shared so the owner and client can open it):");
+  if (url === null) return;
+  if (!/^https?:\/\//i.test(url.trim())) { alert("That doesn't look like a link — it should start with https://"); return; }
+  await markDelivered(videoId, btn, url.trim());
+}
+
+async function markDelivered(videoId, btn, finalCutUrl) {
   if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
   let err = null;
   if (ROLE === "editor") {
-    const r = await runVideoAction("mark_delivered", videoId);
+    const r = await runVideoAction("mark_delivered", videoId, null, finalCutUrl);
     err = r.error;
   } else {
-    const { data, error } = await sbClient.from("social_videos").update({ status: "in_review" }).eq("id", videoId).eq("status", "with_editor").select("id");
+    const { data, error } = await sbClient.from("social_videos").update({ status: "in_review", final_cut_url: finalCutUrl }).eq("id", videoId).eq("status", "with_editor").select("id");
     err = error ? error.message : (!data || !data.length ? "It's no longer with the editor — reload to see its current status." : null);
   }
   if (err) {
     alert("That didn't save: " + err);
-    if (btn) { btn.disabled = false; btn.textContent = "Mark delivered"; }
+    if (btn) { btn.disabled = false; btn.textContent = VIDEO_ACTIONS.mark_delivered.label; }
     return;
   }
   closeVideoModal();
@@ -166,13 +175,13 @@ function renderQueue() {
       </div>
       <div class="actions" style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
         ${f.footageUploads ? `<a class="btn" href="${escapeHtml(f.footageUploads)}" target="_blank" rel="noopener">📁 Footage</a>` : ""}
-        ${f.finalEdits ? `<a class="btn" href="${escapeHtml(f.finalEdits)}" target="_blank" rel="noopener">⬆️ Deliver here</a>` : ""}
+        ${f.finalEdits ? `<a class="btn" href="${escapeHtml(f.finalEdits)}" target="_blank" rel="noopener">⬆️ Upload finished video here</a>` : ""}
         ${f.brandVoice ? `<a class="btn" href="${escapeHtml(f.brandVoice)}" target="_blank" rel="noopener">🎙️ Brand voice</a>` : ""}
       </div>
     `;
     const b = document.createElement("button");
-    b.className = "primary"; b.textContent = "Mark delivered";
-    b.onclick = () => { if (confirm("Mark delivered? Upload the cut to the Deliver folder first.")) markDelivered(video.id, b); };
+    b.className = "primary"; b.textContent = VIDEO_ACTIONS.mark_delivered.label;
+    b.onclick = () => finishVideo(video.id, b);
     card.querySelector(".actions").appendChild(b);
     card.querySelector("[data-open]").onclick = () => openEditorVideoModal(video.id);
     list.appendChild(card);
@@ -187,8 +196,8 @@ function openEditorVideoModal(videoId) {
   const box = document.querySelector("#videoModalBox .modal-actions");
   if (box && canDeliver) {
     const b = document.createElement("button");
-    b.className = "primary"; b.textContent = "Mark delivered";
-    b.onclick = () => { if (confirm("Mark delivered? Upload the cut to the Deliver folder first.")) markDelivered(videoId, b); };
+    b.className = "primary"; b.textContent = VIDEO_ACTIONS.mark_delivered.label;
+    b.onclick = () => finishVideo(videoId, b);
     box.innerHTML = ""; box.appendChild(b);
   }
 }

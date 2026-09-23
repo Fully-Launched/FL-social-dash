@@ -130,6 +130,7 @@ const VIDEO_COLUMNS = {
   filmingDirection: "filming_instructions", caption: "caption", note: "note",
   status: "status", editorId: "editor_id", editorBrief: "editor_brief",
   dueToFilm: "due_to_film", dueToEdit: "due_to_edit", postDate: "post_date",
+  finalCutUrl: "final_cut_url",
   conceptApprovedBy: "concept_approved_by", conceptApprovedAt: "concept_approved_at",
   createdAt: "created_at", updatedAt: "updated_at",
 };
@@ -138,7 +139,7 @@ const VIDEO_COLUMNS = {
 // Gate-1 columns are deliberately absent — use the approve_concept action,
 // so every approval is stamped and logged.
 const VIDEO_WRITABLE = ["clientId","title","platform","hook","overview","body","concept",
-  "filmingDirection","caption","note","status","editorId","editorBrief","dueToFilm","dueToEdit","postDate"];
+  "filmingDirection","caption","note","status","editorId","editorBrief","dueToFilm","dueToEdit","postDate","finalCutUrl"];
 
 function videoFromRow(row) {
   const v = {};
@@ -171,11 +172,11 @@ const VIDEO_ACTIONS = {
   approve_concept:         { role: "client", from: ["concept_pending"], to: "to_film",         label: "Approve", selfServeOnly: true },
   request_concept_changes: { role: "client", from: ["concept_pending"], to: "concept_pending", label: "Request changes", selfServeOnly: true, needsNote: true, notePrompt: "What needs to change?" },
   reject:                  { role: "client", from: ["concept_pending","to_film"], to: "rejected", label: "Deny", selfServeOnly: true, needsNote: true, notePrompt: "Why is this one being denied?", destructive: true },
-  mark_filmed:             { role: "client", from: ["to_film"],       to: "filmed",        label: "Mark filmed", selfServeOnly: true },
-  mark_ready_to_edit:      { role: "client", from: ["filmed"],        to: "ready_to_edit", label: "Mark ready to edit", selfServeOnly: true },
+  mark_filmed:             { role: "client", from: ["to_film"],       to: "filmed",        label: "I've uploaded my footage", selfServeOnly: true },
+  mark_ready_to_edit:      { role: "client", from: ["filmed"],        to: "ready_to_edit", label: "Footage uploaded — send to editing", selfServeOnly: true },
   approve_final:           { role: "client", from: ["client_review"], to: "ready_to_post", label: "Approve — ready to post" },
   request_revisions:       { role: "client", from: ["client_review"], to: "with_editor",   label: "Request revisions", needsNote: true, notePrompt: "What needs to change?", destructive: true },
-  mark_delivered:          { role: "editor", rpc: "social_editor_mark_delivered", from: ["with_editor"], to: "in_review", label: "Mark delivered" },
+  mark_delivered:          { role: "editor", rpc: "social_editor_mark_delivered", from: ["with_editor"], to: "in_review", label: "Finished — send for review" },
 };
 
 // Action keys `role` may take on `video` right now. clientSystem is the
@@ -190,15 +191,16 @@ function videoActionsFor(video, role, clientSystem) {
   });
 }
 
-// Runs one action against Supabase (sbClient comes from auth.js). Resolves
+// Runs one action against Supabase (sbClient comes from auth.js).
+// finalCutUrl only applies to mark_delivered. Resolves
 // to { video } with the updated record, or { error } with the database's
 // message — the database re-checks everything, so a refused move comes back
 // here as an error rather than silently doing nothing.
-async function runVideoAction(actionKey, videoId, note) {
+async function runVideoAction(actionKey, videoId, note, finalCutUrl) {
   const a = VIDEO_ACTIONS[actionKey];
   if (!a) return { error: "Unknown action: " + actionKey };
   const { data, error } = a.rpc
-    ? await sbClient.rpc(a.rpc, { p_video_id: videoId })
+    ? await sbClient.rpc(a.rpc, actionKey === "mark_delivered" ? { p_video_id: videoId, p_final_cut_url: finalCutUrl || null } : { p_video_id: videoId })
     : await sbClient.rpc("social_client_video_action", { p_video_id: videoId, p_action: actionKey, p_note: note || null });
   if (error) return { error: error.message };
   return { video: videoFromRow(data) };
@@ -283,7 +285,8 @@ function openVideoModal(client, video, opts) {
     ` : ""}
 
     <div class="modal-links">
-      ${linkKeys.filter(k => f[k]).map(k => `<a class="btn" href="${f[k]}" target="_blank" rel="noopener">${escapeHtml(linkLabels[k] || k)}</a>`).join("")}
+      ${video.finalCutUrl && !opts.hideFinalCut ? `<a class="btn primary" href="${escapeHtml(video.finalCutUrl)}" target="_blank" rel="noopener">▶ Watch the finished video</a>` : ""}
+      ${linkKeys.filter(k => f[k]).map(k => `<a class="btn" href="${escapeHtml(f[k])}" target="_blank" rel="noopener">${escapeHtml(linkLabels[k] || k)}</a>`).join("")}
     </div>
 
     ${opts.actionsHtml ? `<div class="modal-actions">${opts.actionsHtml}</div>` : ""}
