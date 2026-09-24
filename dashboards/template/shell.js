@@ -206,6 +206,16 @@ async function runVideoAction(actionKey, videoId, note, finalCutUrl) {
   return { video: videoFromRow(data) };
 }
 
+// Where to watch a finished video. Editors upload into the client's
+// Final edits folder (named after the video's title) rather than pasting a
+// link, so that folder is the default; a link on the video itself, if the
+// operator added one, points at the exact file instead.
+function finishedVideoLink(video, folders) {
+  if (video.finalCutUrl) return { url: video.finalCutUrl, label: "▶ Watch" };
+  if (folders && folders.finalEdits) return { url: folders.finalEdits, label: "📁 Finished videos" };
+  return null;
+}
+
 // ---------- Video detail modal ----------
 // The "Airtable, but every row is a video card" piece: one shared detail
 // view for a video record, used by the client portal, operator dashboard,
@@ -251,7 +261,7 @@ function openVideoModal(client, video, opts) {
   ensureModalRoot();
   const f = client.driveFolders || {};
   const linkKeys = opts.linkKeys || Object.keys(f);
-  const linkLabels = { root: "Client folder", footageUploads: "Footage", finalEdits: "Deliver cut", brandVoice: "Brand voice", hooks: "Hooks", assets: "Assets", customerData: "Customer data", contentIdeas: "Content ideas" };
+  const linkLabels = { root: "Client folder", footageUploads: "Footage", finalEdits: "Finished videos", brandVoice: "Brand voice", hooks: "Hooks", assets: "Assets", customerData: "Customer data", contentIdeas: "Content ideas" };
   const eb = video.editorBrief || {};
   const hasEditorBrief = !opts.hideEditorBrief && Object.values(eb).some(v => v);
 

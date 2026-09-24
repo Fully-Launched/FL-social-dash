@@ -123,7 +123,7 @@ export function makeHarness(db) {
   async function openPage(distPath, uid, url, opts = {}) {
     let html = readFileSync(REPO + "dashboards/dist/" + distPath, "utf8");
     html = html.replace(/<script src="https:\/\/cdn[^"]*"><\/script>/, "").replace(/<script src="\/supabase\/config.js"><\/script>/, "");
-    const ui = { alerts: [], prompts: [], confirms: [], log: [], errors: [] };
+    const ui = { alerts: [], prompts: [], promptsShown: [], confirms: [], log: [], errors: [] };
     const vc = new VirtualConsole();
     vc.on("jsdomError", e => ui.errors.push(e.message));
     vc.on("error", e => ui.errors.push(String(e)));
@@ -134,7 +134,7 @@ export function makeHarness(db) {
         w.supabase = { createClient: () => makeClient(uid, ui.log) };
         w.alert = m => ui.alerts.push(String(m));
         w.confirm = m => { ui.confirms.push(String(m)); return true; };
-        w.prompt = () => ui.prompts.length ? ui.prompts.shift() : (opts.promptDefault ?? "a note");
+        w.prompt = m => (ui.promptsShown.push(String(m)), ui.prompts.length) ? ui.prompts.shift() : (opts.promptDefault ?? "a note");
         Object.defineProperty(w.navigator, "clipboard", { value: { writeText: async () => {} } });
       },
     });

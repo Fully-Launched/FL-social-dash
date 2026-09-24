@@ -328,8 +328,8 @@ fully-social-os/
   supabase/
     migrations/                001 (tables + RLS), 002 (overview/body columns),
                                003 (write path: action functions, audit log,
-                               active-editor RLS), 004 (final_cut_url — link to
-                               each finished video)
+                               active-editor RLS), 004 (final_cut_url — optional
+                               link to one exact finished file)
     config.example.js          template for supabase/config.js (gitignored —
                                the real Supabase URL/anon key, local dev only)
 ```
@@ -357,7 +357,11 @@ Who can write what (`supabase/migrations/003_social_videos_write_path.sql`):
   back to the owner), reject, mark_filmed, mark_ready_to_edit (self-serve
   only), approve_final, request_revisions.
 - **Editors** — no direct writes. Only `social_editor_mark_delivered(video,
-  final_cut_url)`, which also saves the Drive link to the finished video.
+  final_cut_url)`. The editor dashboard doesn't send a link: editors upload
+  into the client's Final edits folder, naming the file after the video, and
+  every Watch button opens that folder (`finishedVideoLink` in shell.js). An
+  operator can still set `final_cut_url` in the video form to point at one
+  exact file, and Watch then opens that instead.
   Every editor policy requires `social_editors.active` — a deactivated
   editor sees nothing. (Revoke their session in Supabase Auth too.)
 
