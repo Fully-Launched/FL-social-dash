@@ -27,7 +27,7 @@
   <div id="loadError"></div>
 
   <section class="view active" id="view-queue">
-    <div class="page-head"><h1>To Edit</h1><p>For each video: download the raw footage, edit it using the instructions, upload it to the finished video folder named after the video, then tap <b>Finished — send to operator</b>. If one comes back with a note, changes were asked for.</p></div>
+    <div class="page-head"><h1>To Edit</h1><p>For each video: download the raw footage, edit it using the instructions, upload it to the finished video folder named after the video, then tap <b>Finished — send to operator</b>. If one comes back, what to change is in its <b>Revisions needed</b> box.</p></div>
     <div class="chip-row" id="editorChips"></div>
     <div id="queueList"></div>
   </section>
@@ -119,6 +119,16 @@ function finishButton(videoId) {
   return b;
 }
 
+// What needs to change on a video sent back: the operator's revisions
+// (editor_brief.revisions) and any change the client asked for (note).
+function revisionsBox(video) {
+  const items = [(video.editorBrief || {}).revisions, video.note].filter(Boolean);
+  return items.length ? `<div style="margin:0 0 12px;padding:10px 12px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:8px">
+    <b style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--accent);margin-bottom:4px">📝 Revisions needed</b>
+    <div style="white-space:pre-wrap;font-size:0.9rem;line-height:1.5">${items.map(escapeHtml).join("\n\n")}</div></div>` : "";
+}
+function hasRevisions(video) { return !!((video.editorBrief || {}).revisions || video.note); }
+
 function fieldBlock(label, value) {
   return value ? `<div style="margin:0 0 10px"><b style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">${escapeHtml(label)}</b><div style="font-size:0.9rem;line-height:1.5;white-space:pre-wrap">${escapeHtml(value)}</div></div>` : "";
 }
@@ -147,7 +157,7 @@ function renderQueue() {
         <div class="meta">${escapeHtml(client.name)}${ROLE === "operator" && video.assignedEditor ? " · " + escapeHtml(video.assignedEditor) : ""}${video.postDate ? " · posts " + escapeHtml(video.postDate) : ""}</div></div>
         ${video.dueToEdit ? `<span class="badge" style="background:${overdue ? "rgba(239,68,68,0.15)" : "var(--card2)"};color:${overdue ? "var(--red)" : "var(--sub)"}">${overdue ? "Overdue — " : "Edit by "}${escapeHtml(video.dueToEdit)}</span>` : ""}
       </div>
-      ${video.note ? `<div style="margin:0 0 12px;padding:10px 12px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:8px;font-size:0.88rem"><b>📝 Changes asked for: </b>${escapeHtml(video.note)}</div>` : ""}
+      ${revisionsBox(video)}
       ${fieldBlock("Editing instructions", editorInstructions(video))}
       ${fieldBlock("Hook", video.hook)}
       <div class="meta" style="margin-top:10px">${f.finalEdits
@@ -176,7 +186,7 @@ function renderCalendar() {
   const byDay = {};
   queue().forEach(x => { if (x.video.dueToEdit) (byDay[x.video.dueToEdit] = byDay[x.video.dueToEdit] || []).push(x); });
   renderMonthCalendar(document.getElementById("calGrid"), byDay, x =>
-    `<div class="cal-chip video-card" style="background:color-mix(in srgb, var(--status-${x.video.status}) 20%, transparent); color:var(--status-${x.video.status})" onclick="openEditorVideoModal('${x.video.id}')">${x.video.note ? "📝 " : ""}${escapeHtml(x.client.name)}: ${escapeHtml(x.video.title || "(untitled)")}</div>`,
+    `<div class="cal-chip video-card" style="background:color-mix(in srgb, var(--status-${x.video.status}) 20%, transparent); color:var(--status-${x.video.status})" onclick="openEditorVideoModal('${x.video.id}')">${hasRevisions(x.video) ? "📝 " : ""}${escapeHtml(x.client.name)}: ${escapeHtml(x.video.title || "(untitled)")}</div>`,
     calState, renderCalendar);
 }
 

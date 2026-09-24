@@ -330,7 +330,8 @@ fully-social-os/
     migrations/                001 (tables + RLS), 002 (overview/body columns),
                                003 (write path: action functions, audit log,
                                active-editor RLS), 004 (final_cut_url — optional
-                               link to one exact finished file)
+                               link to one exact finished file), 005
+                               (on_screen_caption)
     config.example.js          template for supabase/config.js (gitignored —
                                the real Supabase URL/anon key, local dev only)
 ```
@@ -414,11 +415,13 @@ back one piece at a time:
 4. Tait picks an editor and sends it. The editor downloads the raw footage,
    edits from the instructions, uploads to the finished video folder named
    after the video, and taps "Finished — send to operator".
-5. Tait watches it: "Revisions needed" (note back to the editor) or
-   "Approve & add caption" (caption, platforms, post date — required
-   caption), which sends it to the client.
+5. Tait watches it: "Revisions needed" (a box whose text shows in the
+   editor's "Revisions needed" section, stored in `editor_brief.revisions`
+   so the client portal never shows it) or "Approve & add captions"
+   (on-screen caption, post caption — required — platforms, post date),
+   which clears the revisions and sends it to the client.
 6. The client approves it for posting (or requests changes, which goes back
-   to the editor).
+   to the editor and shows in the same Revisions needed section).
 7. Ready to Post lists it by post date with the caption and finished video;
    whoever posts marks it posted. Posting stays manual (principle 6).
 

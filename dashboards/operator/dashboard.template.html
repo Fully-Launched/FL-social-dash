@@ -178,22 +178,41 @@ async function sendToEditor(id, btn) {
   if (!editorId) { alert("Pick an editor first."); return; }
   await updateVideo(id, { editorId, status: "with_editor" });
 }
-async function revisionsNeeded(id) {
-  const note = prompt("What needs to change? The editor will see this.");
-  if (note === null) return;
-  if (!note.trim()) { alert("Add a note so the editor knows what to change."); return; }
-  await updateVideo(id, { status: "with_editor", note: note.trim() });
+// Revisions live in editor_brief.revisions, which only the editor's page
+// and this one show — never the client portal (unlike `note`).
+function revisionsNeeded(id) {
+  const x = findVideo(id);
+  if (!x) return;
+  const v = x.video;
+  const box = openModal(`
+    <h2>Revisions needed</h2>
+    <div class="meta" style="margin-bottom:12px">${escapeHtml(x.client.name)} · ${escapeHtml(v.title || "")}. The editor sees this on the video card. The client never does.</div>
+    ${textField("revisions", "What needs to change", "", 6)}
+    <div class="auth-error" id="rvError"></div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="primary" id="rvSave">Send back to the editor</button>
+      <button onclick="closeVideoModal()">Cancel</button>
+    </div>`);
+  box.querySelector("#rvSave").onclick = async e => {
+    const revisions = box.querySelector('[data-f="revisions"]').value.trim();
+    if (!revisions) { box.querySelector("#rvError").textContent = "Write what needs to change first."; return; }
+    e.target.disabled = true; e.target.textContent = "Saving…";
+    const ok = await updateVideo(id, { editorBrief: Object.assign({}, v.editorBrief, { revisions }), status: "with_editor" });
+    if (ok) closeVideoModal(); else { e.target.disabled = false; e.target.textContent = "Send back to the editor"; }
+  };
 }
 // Approving an edit is where the posting details go on: caption,
-// platforms and post date, then it's off to the client for final approval.
+// on-screen caption, platforms and post date, then it's off to the client
+// for final approval. Clears the revisions and note — they're done.
 function approveEdit(id) {
   const x = findVideo(id);
   if (!x) return;
   const v = x.video;
   const box = openModal(`
-    <h2>Approve edit — add posting details</h2>
+    <h2>Approve edit — add captions</h2>
     <div class="meta" style="margin-bottom:12px">${escapeHtml(x.client.name)} · ${escapeHtml(v.title || "")}. The client sees these when they approve it for posting.</div>
-    ${textField("caption", "Caption", v.caption, 5)}
+    ${textField("onScreenCaption", "On-screen caption (text shown on the video)", v.onScreenCaption, 2)}
+    ${textField("caption", "Caption (the post caption)", v.caption, 5)}
     ${textField("platform", "Platforms (comma-separated)", (v.platform || []).join(", "))}
     ${dateField("postDate", "Post date", v.postDate)}
     <div class="auth-error" id="aeError"></div>
@@ -206,7 +225,9 @@ function approveEdit(id) {
     if (!caption) { box.querySelector("#aeError").textContent = "Add the caption first."; return; }
     e.target.disabled = true; e.target.textContent = "Saving…";
     const platform = box.querySelector('[data-f="platform"]').value.split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
-    const ok = await updateVideo(id, { caption, platform, postDate: box.querySelector('[data-f="postDate"]').value || null, note: null, status: "client_review" });
+    const onScreenCaption = box.querySelector('[data-f="onScreenCaption"]').value.trim() || null;
+    const editorBrief = Object.assign({}, v.editorBrief, { revisions: null });
+    const ok = await updateVideo(id, { caption, onScreenCaption, platform, editorBrief, postDate: box.querySelector('[data-f="postDate"]').value || null, note: null, status: "client_review" });
     if (ok) closeVideoModal(); else { e.target.disabled = false; e.target.textContent = "Approve & send to client"; }
   };
 }
@@ -265,7 +286,7 @@ function operatorActionsHtml(x) {
   }
   if (isReadyForEditor(x)) out.push(editorSelect(v.editorId), smallBtn("Send to editor", `sendToEditor('${id}', this)`, "primary"));
   if (v.status === "in_review") {
-    out.push(smallBtn("Revisions needed", `revisionsNeeded('${id}')`, "reject"), smallBtn("Approve & add caption", `approveEdit('${id}')`, "primary"));
+    out.push(smallBtn("Revisions needed", `revisionsNeeded('${id}')`, "reject"), smallBtn("Approve & add captions", `approveEdit('${id}')`, "primary"));
   }
   if (v.status === "client_review") out.push(smallBtn("Approve for client", `approveForClient('${id}', 'ready_to_post', 'video')`, "primary"));
   if (v.status === "ready_to_post") out.push(smallBtn("Mark posted", `markPosted('${id}')`, "primary"));
@@ -331,10 +352,12 @@ function openVideoForm(id, presetClientId) {
     ${textField("hook", "Hook", v.hook, 2)}
     ${textField("body", "What to say", v.body, 4)}
     ${textField("filmingDirection", "How to film it", v.filmingDirection, 3)}
+    ${textField("onScreenCaption", "On-screen caption", v.onScreenCaption, 2)}
     ${textField("caption", "Caption", v.caption, 3)}
     ${textField("note", "Note (shown to the client and the editor)", v.note, 2)}
     <h3 style="font-size:0.85rem;margin:14px 0 8px;color:var(--sub)">For the editor (the client never sees this)</h3>
     ${textField("editorInstructions", "Editing instructions", editorInstructions(v), 4)}
+    ${textField("revisions", "Revisions needed (shows on the editor's card until you approve the edit)", eb.revisions, 3)}
     ${textField("finalCutUrl", "Link to the exact finished file (optional; Watch opens the finished video folder without it)", v.finalCutUrl)}
     <div class="auth-error" id="vfError"></div>
     <div style="display:flex;gap:8px;margin-top:8px">
@@ -356,10 +379,13 @@ function openVideoForm(id, presetClientId) {
     box.querySelectorAll("[data-f]").forEach(el => {
       const k = el.dataset.f, val = el.value.trim();
       if (k === "platform") fields.platform = val.split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
-      else if (k !== "editorInstructions") fields[k] = val;
+      else if (k !== "editorInstructions" && k !== "revisions") fields[k] = val;
     });
     // One instructions field replaces the old separate brief fields.
-    fields.editorBrief = { instructions: box.querySelector('[data-f="editorInstructions"]').value.trim() || null };
+    fields.editorBrief = {
+      instructions: box.querySelector('[data-f="editorInstructions"]').value.trim() || null,
+      revisions: box.querySelector('[data-f="revisions"]').value.trim() || null,
+    };
     if (!fields.title) { err.textContent = "Give it a title first."; return; }
     if (fields.status === "with_editor" && !fields.editorId) { err.textContent = "A video with the editor needs an editor assigned."; return; }
     const saveBtn = box.querySelector("#vfSave");
@@ -551,6 +577,7 @@ function renderPost() {
           <div class="meta">${escapeHtml(x.client.name)}${(v.platform || []).length ? " · " + escapeHtml(v.platform.join(" · ")) : ""}</div></div>
         <span class="badge" style="background:var(--card2);color:${v.postDate && v.postDate < todayISO() ? "var(--red)" : "var(--ink)"}">Post ${escapeHtml(v.postDate || "— no date")}</span>
       </div>
+      ${v.onScreenCaption ? `<div style="margin-top:8px"><b style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">On-screen caption</b><div style="white-space:pre-wrap;font-size:0.9rem">${escapeHtml(v.onScreenCaption)}</div></div>` : ""}
       ${v.caption ? `<div style="margin-top:8px"><b style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">Caption</b><div style="white-space:pre-wrap;font-size:0.9rem">${escapeHtml(v.caption)}</div></div>` : ""}
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
         ${watch ? `<a class="btn" style="font-size:0.78rem;padding:5px 10px" href="${escapeHtml(watch.url)}" target="_blank" rel="noopener">${watch.label}</a>` : ""}

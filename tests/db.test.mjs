@@ -20,7 +20,7 @@ await db.exec(`
   alter default privileges in schema public grant all on sequences to anon, authenticated;
   alter default privileges in schema public grant execute on functions to anon, authenticated;
 `);
-for (const f of ["001_social_os_schema.sql", "002_social_videos_overview_body.sql", "003_social_videos_write_path.sql", "004_social_videos_final_cut_url.sql"]) {
+for (const f of ["001_social_os_schema.sql", "002_social_videos_overview_body.sql", "003_social_videos_write_path.sql", "004_social_videos_final_cut_url.sql", "005_social_videos_on_screen_caption.sql"]) {
   await db.exec(readFileSync(MIG + f, "utf8"));
 }
 await db.exec(readFileSync(MIG + "003_social_videos_write_path.sql", "utf8")); // idempotent re-run
