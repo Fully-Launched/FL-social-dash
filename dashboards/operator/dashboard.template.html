@@ -190,6 +190,15 @@ async function approveAllConcepts(btn) {
   if (failed.length) alert("Some didn't approve:\n" + failed.join("\n"));
   await loadLiveData();
 }
+// Stand-in for the client's own Approve buttons, for when they say yes by
+// text or email. A plain operator update, so the audit log records it as
+// 'direct_update' by the operator, not as the client's approval.
+async function approveForClient(id, toStatus, what) {
+  const x = findVideo(id);
+  if (!x) return;
+  if (!confirm(`Approve this ${what} on ${x.client.name}'s behalf?`)) return;
+  await updateVideo(id, { status: toStatus });
+}
 async function approveEdit(id) { await updateVideo(id, { status: "client_review" }); }
 async function requestEditRevisions(id) {
   const note = prompt("What needs to change? The editor will see this.");
@@ -240,6 +249,10 @@ function operatorActionsHtml(x) {
   const v = x.video, id = v.id;
   const out = [];
   if (videoActionsFor(v, "operator", x.client.clientSystem).includes("approve_concept_owner")) out.push(smallBtn("Approve concept", `approveConcept('${id}')`, "primary"));
+  if (x.client.clientSystem === "self-serve" && v.status === "concept_pending" && v.conceptApprovedAt) {
+    out.push(smallBtn("Approve for client", `approveForClient('${id}', 'to_film', 'concept')`, "primary"));
+  }
+  if (v.status === "client_review") out.push(smallBtn("Approve for client", `approveForClient('${id}', 'ready_to_post', 'video')`, "primary"));
   if (v.status === "ready_to_edit" || (v.status === "filmed" && x.client.clientSystem === "concierge")) {
     out.push(editorSelect(id, v.editorId), smallBtn("Send to editor", `sendToEditor('${id}')`, "primary"));
   }
@@ -542,7 +555,7 @@ function renderReview() {
   listOrEmpty("toEditorList", vids.filter(x => x.video.status === "ready_to_edit" || (x.video.status === "filmed" && x.client.clientSystem === "concierge")),
     x => operatorActionsHtml(x), "Nothing waiting for an editor.");
   listOrEmpty("editsList", vids.filter(x => x.video.status === "in_review"), x => operatorActionsHtml(x), "No edits waiting.");
-  listOrEmpty("clientWaitingList", vids.filter(isWaitingOnClient), null, "Nothing waiting on a client.");
+  listOrEmpty("clientWaitingList", vids.filter(isWaitingOnClient), x => operatorActionsHtml(x) + statusBadge(x.video.status, STATUS_LABEL), "Nothing waiting on a client.");
   listOrEmpty("withEditorList", vids.filter(x => x.video.status === "with_editor"), null, "Nothing with an editor.");
 }
 
