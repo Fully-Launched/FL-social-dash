@@ -19,7 +19,6 @@ await db.exec(`
   insert into social_videos (client_id,title,status,concept_approved_at) values
     ('${FL}','Approve me','concept_pending',now()),
     ('${FL}','Change me','concept_pending',now()),
-    ('${FL}','Deny me','concept_pending',now()),
     ('${FL}','Hidden concept','concept_pending',null),
     ('${FL}','Film me','to_film',null),
     ('${FL}','Final ok','client_review',null),
@@ -38,12 +37,11 @@ let p = await open("test-fully-launched");
 chk("gate-1 concept still hidden from portal", !card(p, "Hidden concept"));
 
 const steps = [
-  ["Approve me", "Approve", null, "to_film"],
-  ["Change me", "Request changes", "Shorter hook", "concept_pending"],
-  ["Deny me", "Deny", "Not on brand", "rejected"],
-  ["Film me", "I've uploaded my footage", null, "ready_to_edit"],
-  ["Final ok", "Approve — ready to post", null, "ready_to_post"],
-  ["Final redo", "Request revisions", "Louder music", "with_editor"],
+  ["Approve me", "Approve idea", null, "to_film"],
+  ["Change me", "Add suggestions", "Shorter hook", "concept_pending"],
+  ["Film me", "Uploaded footage", null, "ready_to_edit"],
+  ["Final ok", "Approve for posting", null, "ready_to_post"],
+  ["Final redo", "Request changes", "Louder music", "with_editor"],
 ];
 for (const [t, label, note, want] of steps) {
   const b = btn(card(p, t), label);
@@ -72,12 +70,12 @@ chk("no alerts or page errors (FL)", !p.ui.alerts.length && !p.ui.errors.length,
 
 // Concierge: only the final-review buttons, no filming ones.
 p = await open("dad-co");
-chk("concierge: approve final shows", !!btn(card(p, "Dad final"), "Approve — ready to post"));
-chk("concierge: no footage button", !btn(card(p, "Dad filmed"), "I've uploaded"));
+chk("concierge: approve final shows", !!btn(card(p, "Dad final"), "Approve for posting"));
+chk("concierge: no footage button", !btn(card(p, "Dad filmed"), "Uploaded footage"));
 chk("concierge: edit shows", !!btn(card(p, "Dad filmed"), "✏️ Edit"));
 
 const log = (await db.query("select action, changed_by_role from social_status_audit_log where action <> 'created'")).rows;
-chk("audit log: all by operator, none as client", log.length >= 7 && log.every(r => r.changed_by_role === "operator" && r.action === "direct_update"), log);
+chk("audit log: all by operator, none as client", log.length >= 6 && log.every(r => r.changed_by_role === "operator" && r.action === "direct_update"), log);
 
 console.log(`${counts.pass} passed, ${counts.fail} failed`);
 process.exit(counts.fail ? 1 : 0);

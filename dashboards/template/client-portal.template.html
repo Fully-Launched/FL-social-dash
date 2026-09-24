@@ -17,13 +17,8 @@
   <div class="brand"><span class="dot"></span> <span id="brandName">Fully Social OS</span></div>
   <div class="sync-badge" id="authUserBadge"></div>
   <div class="sync-badge" id="operatorBadge" style="display:none">🔧 Viewing as operator</div>
-  <div class="nav-item active" data-view="home"><span class="ic">🏠</span> Dashboard</div>
-  <div class="nav-item" data-view="videos"><span class="ic">🎬</span> My Videos</div>
+  <div class="nav-item active" data-view="videos"><span class="ic">🎬</span> My Videos</div>
   <div class="nav-item" data-view="calendar"><span class="ic">📅</span> Content Calendar</div>
-  <div class="nav-item" data-view="news" id="newsNav"><span class="ic">📰</span> News</div>
-  <div class="nav-item" data-view="docs"><span class="ic">📄</span> Important Documents</div>
-  <!-- Analytics is a future build — nothing sources it live yet, so it's
-       off the nav rather than showing an always-empty page to clients. -->
 </nav>
 
 <main class="main">
@@ -31,67 +26,29 @@
   <div id="operatorBanner"></div>
   <div id="loadError"></div>
 
-  <section class="view active" id="view-home">
-    <div class="page-head"><h1>Welcome back</h1><p id="planWindowText"></p></div>
-    <div class="stat-grid" id="homeStats"></div>
-    <div class="card">
-      <h2>Waiting on you</h2>
-      <div id="homeTodo"></div>
-    </div>
-    <div class="card" id="footageCard" style="display:none">
-      <h2>Footage folder</h2>
-      <p style="color:var(--sub);font-size:0.88rem;margin:0 0 12px">Drop your filmed footage here, then mark the video filmed on My Videos.</p>
-      <a class="btn primary" id="footageFolderLink" href="#" target="_blank" rel="noopener">📁 Open footage folder</a>
-    </div>
-  </section>
-
-  <section class="view" id="view-videos">
+  <section class="view active" id="view-videos">
     <div class="page-head"><h1>My Videos</h1><p id="videosSubhead"></p></div>
     <div class="chip-row" id="videoTabs"></div>
 
-    <div data-panel="approve">
-      <div id="groupConcepts">
-        <h2 style="font-size:1rem;margin:18px 0 10px">New ideas to review</h2>
-        <p class="meta" style="margin:-4px 0 10px">Approve the ones you want to film, ask for changes, or say no.</p>
-        <div id="listConcepts"></div>
-      </div>
-      <h2 style="font-size:1rem;margin:22px 0 10px">Finished videos to approve</h2>
-      <p class="meta" style="margin:-4px 0 10px">Watch each one. Approve it to schedule it for posting, or ask for changes.</p>
-      <div id="listReview"></div>
+    <div data-panel="ideas">
+      <p class="meta" style="margin:8px 0 12px">Approve the ideas you like, or add suggestions and we'll rework them.</p>
+      <div id="listIdeas"></div>
     </div>
 
     <div data-panel="film" style="display:none">
-      <p class="meta" style="margin:8px 0 12px">Film each video using its instructions, upload the footage to your folder, then tap <b>I've uploaded my footage</b>.</p>
+      <p class="meta" style="margin:8px 0 12px">Film each video using its instructions, upload the footage with <b>📁 Raw footage here</b>, then tap <b>Uploaded footage</b>.</p>
       <div id="listToFilm"></div>
     </div>
 
-    <div data-panel="progress" style="display:none">
-      <p class="meta" style="margin:8px 0 12px">Being edited and checked — nothing needed from you yet.</p>
-      <div id="listProgress"></div>
-    </div>
-
-    <div data-panel="done" style="display:none">
-      <h2 style="font-size:1rem;margin:18px 0 10px">Ready to post</h2>
-      <div id="listReady"></div>
-      <h2 style="font-size:1rem;margin:22px 0 10px">Posted</h2>
-      <div id="listPosted"></div>
+    <div data-panel="final" style="display:none">
+      <p class="meta" style="margin:8px 0 12px">Watch each finished video, then approve it for posting.</p>
+      <div id="listFinal"></div>
     </div>
   </section>
 
   <section class="view" id="view-calendar">
-    <div class="page-head"><h1>Content Calendar</h1><p>🎥 film dates and 📣 post dates.</p></div>
+    <div class="page-head"><h1>Content Calendar</h1><p>Every video on its post date<span id="calFilmNote"> (🎥 marks when to film it)</span>. Click one to open it.</p></div>
     <div class="card"><div class="cal-grid" id="calGrid"></div></div>
-  </section>
-
-  <section class="view" id="view-news">
-    <div class="page-head"><h1>News</h1><p>Worth knowing about in your niche — curated, not auto-pulled.</p></div>
-    <div class="chip-row" id="newsChips"></div>
-    <div class="card"><div id="newsList"></div></div>
-  </section>
-
-  <section class="view" id="view-docs">
-    <div class="page-head"><h1>Important Documents</h1><p>Everything that shapes your content, in one place — no need to dig through Drive.</p></div>
-    <div class="card"><div id="docsList"></div></div>
   </section>
 
 </main>
@@ -101,38 +58,28 @@
 <script>/*__SHELL_JS__*/</script>
 <script>/*__AUTH_JS__*/</script>
 <script>
-// News and agency resources are agency-wide, baked in at build time.
-// Everything client-specific is read live from Supabase once the login is
-// resolved, and every button here writes straight to Supabase through
-// social_client_video_action — the database checks each move (see
-// supabase/migrations/003_social_videos_write_path.sql), so there's no
-// local copy, relay, or status report anymore.
-const ALL_NEWS = /*__NEWS_JSON__*/[];
-const RESOURCES = /*__RESOURCES_JSON__*/{};
-let NEWS = [];
+// Everything is read live from Supabase once the login is resolved. A
+// client's buttons write through social_client_video_action — the
+// database checks each move (see
+// supabase/migrations/003_social_videos_write_path.sql).
 
 let CLIENT = null;          // the social_clients row
 let DRIVE_FOLDERS = {};     // from social_drive_folder_links
 let VIDEOS = [];            // from social_videos (videoFromRow shape)
-let HIDDEN_CONCEPTS = 0;    // operator view only: concepts the client can't see yet
-let IS_SELF_SERVE = true;
+let HIDDEN_CONCEPTS = 0;    // operator view only: ideas the client can't see (sent back with suggestions)
+let IS_SELF_SERVE = true;   // self-serve = the client films; concierge = Tait films
 let IS_OPERATOR = false;
 const calState = { offset: 0 };
 let activeTab = null;
 
-// The four places a video can be, from the client's point of view.
+// The three things a client does. Clients Tait films for only get the last.
 const TABS = [
-  { key: "approve",  label: "Needs your approval", statuses: ["concept_pending", "client_review"] },
-  { key: "film",     label: "To film",             statuses: ["to_film", "filmed"], selfServeOnly: true },
-  { key: "progress", label: "In progress",         statuses: ["ready_to_edit", "with_editor", "in_review"] },
-  { key: "done",     label: "Ready & posted",      statuses: ["ready_to_post", "posted"] },
+  { key: "ideas", label: "Ideas to approve",           statuses: ["concept_pending"], selfServeOnly: true },
+  { key: "film",  label: "To film",                    statuses: ["to_film", "filmed"], selfServeOnly: true },
+  { key: "final", label: "Finished videos to approve", statuses: ["client_review"] },
 ];
 function tabsForClient() { return TABS.filter(t => IS_SELF_SERVE || !t.selfServeOnly); }
-function videosInTab(key) {
-  const t = TABS.find(x => x.key === key);
-  // For concierge clients "filmed" means the operator has it — show it as in progress.
-  return VIDEOS.filter(v => t.statuses.includes(v.status) || (key === "progress" && !IS_SELF_SERVE && v.status === "filmed"));
-}
+function videosInTab(key) { return VIDEOS.filter(v => TABS.find(x => x.key === key).statuses.includes(v.status)); }
 
 // One shared file serves every client — which one comes from the URL
 // (/clients/<slug>, or the older /clients/<slug>/portal.html; see
@@ -146,18 +93,16 @@ async function loadVideos() {
   const { data, error } = await sbClient.from("social_videos").select("*").eq("client_id", CLIENT.id).order("created_at");
   document.getElementById("loadError").innerHTML = error
     ? `<div class="card"><b style="color:var(--red)">Couldn't load your videos:</b> <span class="meta">${escapeHtml(error.message)}</span></div>` : "";
-  let vids = (data || []).map(videoFromRow);
-  // An operator's login can read concepts that haven't passed gate 1 yet;
-  // the client's can't (RLS). Hide them here too, so this page shows
-  // exactly what the client sees.
+  let vids = (data || []).map(videoFromRow).filter(v => v.status !== "rejected");
+  // An operator's login can read ideas the client sent back with
+  // suggestions (gate 1 cleared); the client's can't (RLS). Hide them here
+  // too, so this page shows exactly what the client sees.
   HIDDEN_CONCEPTS = vids.filter(v => v.status === "concept_pending" && !v.conceptApprovedAt).length;
   VIDEOS = vids.filter(v => !(v.status === "concept_pending" && !v.conceptApprovedAt));
   renderAll();
 }
 
-function renderAll() {
-  renderOperatorBanner(); renderHome(); renderVideos(); renderCalendar();
-}
+function renderAll() { renderOperatorBanner(); renderVideos(); renderCalendar(); }
 
 // ---------- actions ----------
 // An operator sees the client's own buttons too, for clients who'd rather
@@ -172,8 +117,8 @@ async function runAsOperator(actionKey, videoId, note) {
   const a = VIDEO_ACTIONS[actionKey];
   const row = { status: a.to };
   if (note) row.note = note;
-  // Asking for changes sends the concept back to the owner's queue, like
-  // the client's request_concept_changes does.
+  // Suggestions send the idea back to Tait, like the client's
+  // request_concept_changes does.
   if (actionKey === "request_concept_changes") { row.concept_approved_by = null; row.concept_approved_at = null; }
   const { data, error } = await sbClient.from("social_videos").update(row).eq("id", videoId).in("status", a.from).select("*");
   if (error) return { error: error.message };
@@ -184,7 +129,7 @@ async function runAsOperator(actionKey, videoId, note) {
 async function doAction(actionKey, videoId, btnEl) {
   const a = VIDEO_ACTIONS[actionKey];
   const video = VIDEOS.find(v => v.id === videoId);
-  if (actionKey === "mark_filmed" && !confirm(`Have you uploaded all the footage for "${video ? video.title : "this video"}" to your footage folder?`)) return;
+  if (actionKey === "mark_filmed" && !confirm(`Have you uploaded all the footage for "${video ? video.title : "this video"}" to the raw footage folder?`)) return;
   let note = null;
   if (a.needsNote) {
     note = prompt(a.notePrompt || "Add a note:");
@@ -195,7 +140,7 @@ async function doAction(actionKey, videoId, btnEl) {
   const run = IS_OPERATOR ? runAsOperator : runVideoAction;
   let r = await run(actionKey, videoId, note);
   // Uploading footage is one step for the client: filmed, then straight on
-  // to editing.
+  // to Tait.
   if (!r.error && actionKey === "mark_filmed") r = await run("mark_ready_to_edit", videoId);
   if (r.error) {
     alert("That didn't save: " + r.error);
@@ -225,25 +170,26 @@ function videoCard(video) {
   const card = document.createElement("div");
   card.className = "card";
   const platforms = (video.platform || []).join(" · ");
+  const isIdea = ["concept_pending", "to_film"].includes(video.status);
   const showFootage = DRIVE_FOLDERS.footageUploads && IS_SELF_SERVE && ["to_film", "filmed"].includes(video.status);
-  const watch = ["client_review", "ready_to_post", "posted"].includes(video.status) ? finishedVideoLink(video, DRIVE_FOLDERS) : null;
+  const watch = video.status === "client_review" ? finishedVideoLink(video, DRIVE_FOLDERS) : null;
   card.innerHTML = `
     <div class="row" style="border:none;padding:0 0 10px">
       <div class="left"><b class="video-card" style="display:inline-block" data-open>${escapeHtml(video.title || "(untitled)")}</b>
-      <div class="meta">${escapeHtml(platforms)} ${video.dueToFilm ? "· film by " + escapeHtml(video.dueToFilm) : ""} ${video.postDate ? "· posts " + escapeHtml(video.postDate) : ""}</div></div>
+      <div class="meta">${escapeHtml(platforms)} ${video.dueToFilm && isIdea && IS_SELF_SERVE ? "· film by " + escapeHtml(video.dueToFilm) : ""} ${video.postDate ? "· posts " + escapeHtml(video.postDate) : ""}</div></div>
       ${statusBadge(video.status, STATUS_LABEL)}
     </div>
     ${video.overview ? `<div style="margin:10px 0 4px;color:var(--sub);font-size:0.9rem">${escapeHtml(video.overview)}</div>` : ""}
     ${fieldRow("Hook", video.hook)}
-    ${fieldRow("What to say", ["concept_pending", "to_film"].includes(video.status) ? video.body : null)}
-    ${["concept_pending", "to_film"].includes(video.status) ? fieldRow("How to film it", video.filmingDirection) : ""}
-    ${fieldRow("Caption", video.caption)}
+    ${isIdea ? fieldRow("What to say", video.body) : ""}
+    ${isIdea && IS_SELF_SERVE ? fieldRow("How to film it", video.filmingDirection) : ""}
+    ${video.status === "client_review" ? fieldRow("Caption", video.caption) : ""}
     ${video.note ? `<div class="meta" style="margin-top:8px">Note: ${escapeHtml(video.note)}</div>` : ""}
-    ${showFootage ? `<div class="meta" style="margin-top:10px">Name your files starting with <b>${escapeHtml(video.title || "the video title")}</b> so the editor can find them.</div>` : ""}
+    ${showFootage ? `<div class="meta" style="margin-top:10px">Name your files starting with <b>${escapeHtml(video.title || "the video title")}</b>.</div>` : ""}
     <div class="actions" style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+      ${watch ? `<a class="btn primary" href="${escapeHtml(watch.url)}" target="_blank" rel="noopener">${video.finalCutUrl ? "▶ Watch the video" : "▶ Watch it in the finished video folder"}</a>` : ""}
+      ${showFootage ? `<a class="btn" href="${escapeHtml(DRIVE_FOLDERS.footageUploads)}" target="_blank" rel="noopener">📁 Raw footage here</a>` : ""}
       ${IS_OPERATOR ? `<button onclick="openPortalEditForm('${video.id}')">✏️ Edit</button>` : ""}
-      ${watch ? `<a class="btn primary" href="${escapeHtml(watch.url)}" target="_blank" rel="noopener">${video.finalCutUrl ? "▶ Watch the video" : "▶ Watch it in Finished videos"}</a>` : ""}
-      ${showFootage ? `<a class="btn" href="${escapeHtml(DRIVE_FOLDERS.footageUploads)}" target="_blank" rel="noopener">📁 Upload footage</a>` : ""}
     </div>
   `;
   card.querySelector("[data-open]").onclick = () => openClientVideoModal(video.id);
@@ -257,7 +203,8 @@ function openClientVideoModal(videoId) {
   if (!video) return;
   const keys = actionsFor(video);
   openVideoModal({ displayName: CLIENT.name, driveFolders: DRIVE_FOLDERS }, video,
-    { actionsHtml: keys.length || IS_OPERATOR ? " " : "", linkKeys: ["footageUploads"], hideEditorBrief: true });
+    { actionsHtml: keys.length || IS_OPERATOR ? " " : "", linkKeys: IS_SELF_SERVE ? ["footageUploads"] : [], hideEditorBrief: true,
+      hideFinalCut: video.status !== "client_review" });
   const box = document.querySelector("#videoModalBox .modal-actions");
   if (box) {
     box.innerHTML = "";
@@ -267,7 +214,7 @@ function openClientVideoModal(videoId) {
 }
 
 // ---------- operator: edit a video from the portal ----------
-// The fields the client sees. The full form (editor brief, editor,
+// The fields the client sees. The full form (editor, instructions, any
 // status) stays in the operator dashboard.
 const PORTAL_EDIT_FIELDS = [
   ["title", "Title"], ["overview", "Overview", 2], ["hook", "Hook", 2], ["body", "What to say", 4],
@@ -308,26 +255,14 @@ function renderOperatorBanner() {
   document.getElementById("operatorBanner").innerHTML = IS_OPERATOR ? `
     <div class="card" style="margin-bottom:14px"><b>You're viewing ${escapeHtml(CLIENT.name)}'s portal as the operator.</b>
       <div class="meta">This is exactly what the client sees. You can click their buttons and edit videos for them. It's recorded as you, not the client.
-      The full editor (editor brief, assigned editor, any status) is in the <a href="/operator/dashboard.html" style="color:inherit;text-decoration:underline">operator dashboard</a>.
-      ${HIDDEN_CONCEPTS ? `<br>${HIDDEN_CONCEPTS} concept(s) are hidden from the client until you approve them there.` : ""}</div></div>` : "";
-}
-
-function renderHome() {
-  const todo = VIDEOS.filter(v => actionsFor(v).length);
-  document.getElementById("homeStats").innerHTML = tabsForClient().map(t =>
-    `<div class="stat-card video-card" onclick="openTab('${t.key}')"><div class="label">${t.label}</div><div class="value">${videosInTab(t.key).length}</div></div>`).join("");
-  document.getElementById("homeTodo").innerHTML = todo.length
-    ? todo.map(v => `<div class="row"><div class="left"><b class="video-card" style="display:inline-block" onclick="openClientVideoModal('${v.id}')">${escapeHtml(v.title || "(untitled)")}</b>
-        <div class="meta">${v.dueToFilm && ["concept_pending","to_film"].includes(v.status) ? "film by " + escapeHtml(v.dueToFilm) : v.postDate ? "posts " + escapeHtml(v.postDate) : ""}</div></div>${statusBadge(v.status, STATUS_LABEL)}</div>`).join("")
-    : '<div class="empty">Nothing needs you right now.</div>';
-  document.getElementById("footageCard").style.display = IS_SELF_SERVE && DRIVE_FOLDERS.footageUploads ? "" : "none";
+      The full editor (editor, instructions, any status) is in the <a href="/operator/dashboard.html" style="color:inherit;text-decoration:underline">operator dashboard</a>.
+      ${HIDDEN_CONCEPTS ? `<br>${HIDDEN_CONCEPTS} idea(s) with suggestions are back with you. Edit and send them again from the operator dashboard.` : ""}</div></div>` : "";
 }
 
 function renderVideos() {
   document.getElementById("videosSubhead").textContent = IS_SELF_SERVE
-    ? "Approve ideas, film them, and give final sign-off before anything posts."
-    : "We handle the filming — you just approve the finished videos before they post.";
-  document.getElementById("groupConcepts").style.display = IS_SELF_SERVE ? "" : "none";
+    ? "Approve ideas, film them, and approve the finished videos for posting."
+    : "We film and edit. You just approve the finished videos for posting.";
   const byPostDate = (a, b) => (a.postDate || "9999").localeCompare(b.postDate || "9999");
   const byFilmDate = (a, b) => (a.dueToFilm || "9999").localeCompare(b.dueToFilm || "9999");
   const fill = (elId, vids, empty) => {
@@ -336,12 +271,9 @@ function renderVideos() {
     if (!vids.length) { el.innerHTML = `<div class="empty">${empty}</div>`; return; }
     vids.forEach(v => el.appendChild(videoCard(v)));
   };
-  fill("listConcepts", VIDEOS.filter(v => v.status === "concept_pending").sort(byFilmDate), "No new ideas right now.");
-  fill("listReview", VIDEOS.filter(v => v.status === "client_review").sort(byPostDate), "No finished videos waiting.");
+  fill("listIdeas", videosInTab("ideas").sort(byPostDate), "No new ideas right now.");
   fill("listToFilm", videosInTab("film").sort(byFilmDate), "Nothing to film right now.");
-  fill("listProgress", videosInTab("progress").sort(byPostDate), "Nothing in progress.");
-  fill("listReady", VIDEOS.filter(v => v.status === "ready_to_post").sort(byPostDate), "Nothing scheduled yet.");
-  fill("listPosted", VIDEOS.filter(v => v.status === "posted").sort(byPostDate).reverse(), "Nothing posted yet.");
+  fill("listFinal", videosInTab("final").sort(byPostDate), "No finished videos waiting.");
   renderVideoTabs();
 }
 
@@ -356,49 +288,17 @@ function renderVideoTabs() {
   document.querySelectorAll("#videoTabs .chip").forEach(c => c.onclick = () => { activeTab = c.dataset.tab; renderVideoTabs(); });
   document.querySelectorAll("[data-panel]").forEach(p => { p.style.display = p.dataset.panel === activeTab ? "" : "none"; });
 }
-function openTab(key) {
-  activeTab = key;
-  renderVideoTabs();
-  const nav = document.querySelector('.nav-item[data-view="videos"]');
-  if (nav) nav.click();
-}
 
 function renderCalendar() {
   const byDay = {};
   VIDEOS.forEach(v => {
-    if (v.dueToFilm && IS_SELF_SERVE) (byDay[v.dueToFilm] = byDay[v.dueToFilm] || []).push({ v, kind: "🎥 " });
-    if (v.postDate) (byDay[v.postDate] = byDay[v.postDate] || []).push({ v, kind: "📣 " });
+    if (v.dueToFilm && IS_SELF_SERVE && ["concept_pending", "to_film"].includes(v.status)) (byDay[v.dueToFilm] = byDay[v.dueToFilm] || []).push({ v, kind: "🎥 " });
+    if (v.postDate) (byDay[v.postDate] = byDay[v.postDate] || []).push({ v, kind: "" });
   });
+  document.getElementById("calFilmNote").style.display = IS_SELF_SERVE ? "" : "none";
   renderMonthCalendar(document.getElementById("calGrid"), byDay, ({ v, kind }) =>
     `<div class="cal-chip video-card" style="background:color-mix(in srgb, var(--status-${v.status}) 20%, transparent); color:var(--status-${v.status})" onclick="openClientVideoModal('${v.id}')">${kind}${escapeHtml(v.title || "(untitled)")}</div>`,
     calState, renderCalendar);
-}
-
-let newsCategory = "All";
-function renderNews() {
-  const cats = ["All", ...Array.from(new Set(NEWS.map(n => n.category)))];
-  document.getElementById("newsChips").innerHTML = cats.map(c => `<div class="chip ${c === newsCategory ? "active" : ""}" data-c="${escapeHtml(c)}">${escapeHtml(c)}</div>`).join("");
-  document.querySelectorAll("#newsChips .chip").forEach(el => el.onclick = () => { newsCategory = el.dataset.c; renderNews(); });
-  const items = NEWS.filter(n => newsCategory === "All" || n.category === newsCategory);
-  document.getElementById("newsList").innerHTML = items.length ? items.map(n => `
-    <div class="row"><div class="left"><b><a href="${escapeHtml(n.url)}" target="_blank" rel="noopener">${escapeHtml(n.title)}</a></b>
-    <div class="meta">${escapeHtml(n.source)} · ${escapeHtml(n.date)}</div></div>
-    <span class="badge" style="background:var(--card2);color:var(--sub)">${escapeHtml(n.category)}</span></div>
-  `).join("") : '<div class="empty">Nothing filed under this category yet.</div>';
-}
-
-function renderDocs() {
-  const f = DRIVE_FOLDERS;
-  const docs = [
-    { label: "Customer Data", desc: "Pains, dreams, fears, goals — what your customers actually think.", url: f.customerData },
-    { label: "Voice", desc: "Your voice profile — how you sound, your words, your story.", url: f.brandVoice },
-    { label: "Content Ideas", desc: "Your 3 pillars, 3 formats, 3 perspectives, and the running idea bank.", url: f.contentIdeas },
-    { label: "How to Film High Quality", desc: "General filming guide — light, framing, audio, what \"good enough\" looks like.", url: IS_SELF_SERVE ? RESOURCES.filmingGuide : null },
-  ].filter(d => d.url);
-  document.getElementById("docsList").innerHTML = docs.length ? docs.map(d => `
-    <div class="row"><div class="left"><b>${escapeHtml(d.label)}</b><div class="meta">${escapeHtml(d.desc)}</div></div>
-    <a class="btn primary" href="${escapeHtml(d.url)}" target="_blank" rel="noopener">Open</a></div>
-  `).join("") : '<div class="empty">Nothing linked yet.</div>';
 }
 
 // Two logins can open a portal: any operator (any client), or this
@@ -425,23 +325,12 @@ async function startApp(user, access) {
 
   document.title = CLIENT.name;
   document.getElementById("brandName").textContent = CLIENT.name;
-  document.getElementById("planWindowText").textContent = CLIENT.plan_window_start || CLIENT.plan_window_end
-    ? "Plan window: " + (CLIENT.plan_window_start || "?") + " – " + (CLIENT.plan_window_end || "?") : "";
   document.getElementById("operatorBadge").style.display = IS_OPERATOR ? "block" : "none";
 
   const { data: folderRow } = await sbClient.from("social_drive_folder_links").select("*").eq("client_id", CLIENT.id).maybeSingle();
-  DRIVE_FOLDERS = folderRow ? {
-    root: folderRow.root, footageUploads: folderRow.footage_uploads, finalEdits: folderRow.final_edits,
-    brandVoice: folderRow.brand_voice, hooks: folderRow.hooks, assets: folderRow.assets,
-    customerData: folderRow.customer_data, contentIdeas: folderRow.content_ideas,
-  } : {};
-  document.getElementById("footageFolderLink").href = DRIVE_FOLDERS.footageUploads || "#";
+  DRIVE_FOLDERS = folderRow ? { footageUploads: folderRow.footage_uploads, finalEdits: folderRow.final_edits } : {};
 
-  NEWS = ALL_NEWS.filter(item => !item.relevantClients || !item.relevantClients.length || item.relevantClients.indexOf(CLIENT.slug) !== -1);
-  document.getElementById("newsNav").style.display = NEWS.length ? "" : "none";
-
-  renderNews(); renderDocs();
-  initRouter("home");
+  initRouter("videos");
   await loadVideos();
 }
 

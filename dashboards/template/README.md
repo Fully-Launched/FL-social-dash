@@ -31,11 +31,12 @@ Shared code, inlined into every page by `build.py`:
 → `in_review` → `client_review` → `ready_to_post` → `posted`, plus
 `rejected`.
 
-- `concept_pending` has two states: waiting on the owner (gate 1 —
-  `concept_approved_at` is null, and RLS hides it from the client) and
-  waiting on the client (approved).
-- Concierge clients skip the client's concept/filming steps; the operator
-  moves those videos along directly.
+- `concept_pending` has two states: visible to the client (gate 1
+  stamped — new ideas are inserted this way) and back with the owner after
+  the client added suggestions (`concept_approved_at` is null, and RLS hides
+  it from the client until the operator sends it again).
+- Concierge clients ("I film") start at `to_film` and skip the client's
+  idea/filming steps; the operator sends them to the editor directly.
 - `in_review` is gate 2 (owner approves the edit); `client_review` is
   gate 3 (client's final sign-off).
 

@@ -108,16 +108,16 @@ function statusBadge(status, labelMap) {
 }
 
 const STATUS_LABEL = {
-  concept_pending: "Concept", to_film: "To film", filmed: "Filmed",
-  ready_to_edit: "Ready to edit", rejected: "Rejected", with_editor: "With editor",
-  in_review: "In review (owner)", client_review: "Final review (client)",
+  concept_pending: "Idea", to_film: "To film", filmed: "Filmed",
+  ready_to_edit: "Footage uploaded", rejected: "Rejected", with_editor: "Editing",
+  in_review: "Edit review", client_review: "Client final review",
   ready_to_post: "Ready to post", posted: "Posted"
 };
 
-// Full lifecycle, in order. Self-serve clients use all of it; concierge
-// clients (system: "concierge") skip concept_pending/to_film entirely —
-// Tait films the interview himself, so there's no client-facing pre-film
-// approval step. Both systems share every stage from "filmed" onward.
+// Full lifecycle, in order. Self-serve clients ("client films") use all
+// of it; concierge clients ("I film") start at to_film — Tait films them
+// himself and the client only approves the finished video. Both share
+// every stage from "filmed" onward.
 const STATUS_ORDER = ["concept_pending","to_film","filmed","ready_to_edit","with_editor","in_review","client_review","ready_to_post","posted"];
 
 // ---------- social_videos <-> page shape ----------
@@ -168,15 +168,14 @@ function videoFieldsToRow(fields) {
 // Keep the two in step. Operators move every other status by writing
 // `status` directly (full RLS access), so only their gate-1 action is here.
 const VIDEO_ACTIONS = {
-  approve_concept_owner:   { role: "operator", rpc: "social_operator_approve_concept", from: ["concept_pending"], to: "concept_pending", label: "Approve concept", needsConceptUnapproved: true },
-  approve_concept:         { role: "client", from: ["concept_pending"], to: "to_film",         label: "Approve", selfServeOnly: true },
-  request_concept_changes: { role: "client", from: ["concept_pending"], to: "concept_pending", label: "Request changes", selfServeOnly: true, needsNote: true, notePrompt: "What needs to change?" },
-  reject:                  { role: "client", from: ["concept_pending","to_film"], to: "rejected", label: "Deny", selfServeOnly: true, needsNote: true, notePrompt: "Why is this one being denied?", destructive: true },
-  mark_filmed:             { role: "client", from: ["to_film"],       to: "filmed",        label: "I've uploaded my footage", selfServeOnly: true },
-  mark_ready_to_edit:      { role: "client", from: ["filmed"],        to: "ready_to_edit", label: "Footage uploaded — send to editing", selfServeOnly: true },
-  approve_final:           { role: "client", from: ["client_review"], to: "ready_to_post", label: "Approve — ready to post" },
-  request_revisions:       { role: "client", from: ["client_review"], to: "with_editor",   label: "Request revisions", needsNote: true, notePrompt: "What needs to change?", destructive: true },
-  mark_delivered:          { role: "editor", rpc: "social_editor_mark_delivered", from: ["with_editor"], to: "in_review", label: "Finished — send for review" },
+  approve_concept_owner:   { role: "operator", rpc: "social_operator_approve_concept", from: ["concept_pending"], to: "concept_pending", label: "Send to client", needsConceptUnapproved: true },
+  approve_concept:         { role: "client", from: ["concept_pending"], to: "to_film",         label: "Approve idea", selfServeOnly: true },
+  request_concept_changes: { role: "client", from: ["concept_pending"], to: "concept_pending", label: "Add suggestions", selfServeOnly: true, needsNote: true, notePrompt: "What would you change about this idea?" },
+  mark_filmed:             { role: "client", from: ["to_film"],       to: "filmed",        label: "Uploaded footage", selfServeOnly: true },
+  mark_ready_to_edit:      { role: "client", from: ["filmed"],        to: "ready_to_edit", label: "Uploaded footage", selfServeOnly: true },
+  approve_final:           { role: "client", from: ["client_review"], to: "ready_to_post", label: "Approve for posting" },
+  request_revisions:       { role: "client", from: ["client_review"], to: "with_editor",   label: "Request changes", needsNote: true, notePrompt: "What needs to change?", destructive: true },
+  mark_delivered:          { role: "editor", rpc: "social_editor_mark_delivered", from: ["with_editor"], to: "in_review", label: "Finished — send to operator" },
 };
 
 // Action keys `role` may take on `video` right now. clientSystem is the
@@ -214,6 +213,16 @@ function finishedVideoLink(video, folders) {
   if (video.finalCutUrl) return { url: video.finalCutUrl, label: "▶ Watch" };
   if (folders && folders.finalEdits) return { url: folders.finalEdits, label: "📁 Finished videos" };
   return null;
+}
+
+// The editor's instructions: one free-text field (editor_brief.instructions).
+// Videos made before it had separate brief fields; those are folded in so
+// nothing already written disappears.
+const OLD_BRIEF_FIELDS = [["storyBeats", "Story beats"], ["mustKeep", "Must keep"], ["captionsStyle", "Captions"],
+  ["musicVibe", "Music / pacing"], ["ctaOverlay", "CTA overlay"], ["platformSpecs", "Platform specs"]];
+function editorInstructions(video) {
+  const eb = video.editorBrief || {};
+  return [eb.instructions, ...OLD_BRIEF_FIELDS.filter(([k]) => eb[k]).map(([k, l]) => l + ": " + eb[k])].filter(Boolean).join("\n");
 }
 
 // ---------- Video detail modal ----------
@@ -261,9 +270,8 @@ function openVideoModal(client, video, opts) {
   ensureModalRoot();
   const f = client.driveFolders || {};
   const linkKeys = opts.linkKeys || Object.keys(f);
-  const linkLabels = { root: "Client folder", footageUploads: "Footage", finalEdits: "Finished videos", brandVoice: "Brand voice", hooks: "Hooks", assets: "Assets", customerData: "Customer data", contentIdeas: "Content ideas" };
-  const eb = video.editorBrief || {};
-  const hasEditorBrief = !opts.hideEditorBrief && Object.values(eb).some(v => v);
+  const linkLabels = { root: "Client folder", footageUploads: "Raw footage", finalEdits: "Finished video folder", brandVoice: "Brand voice", hooks: "Hooks", assets: "Assets", customerData: "Customer data", contentIdeas: "Content ideas" };
+  const instructions = opts.hideEditorBrief ? "" : editorInstructions(video);
 
   document.getElementById("videoModalBox").innerHTML = `
     <div class="modal-close" onclick="closeVideoModal()">✕</div>
@@ -278,21 +286,13 @@ function openVideoModal(client, video, opts) {
 
     ${modalField("Overview", video.overview)}
     ${modalField("Hook", video.hook)}
-    ${modalField("Body / talking points", video.body)}
-    ${modalField("Filming direction", video.filmingDirection)}
+    ${modalField("What to say", video.body)}
+    ${modalField("How to film it", video.filmingDirection)}
     ${modalField("Caption", video.caption)}
     ${video.note ? modalField("Note", video.note) : ""}
 
-    ${hasEditorBrief ? `
-      <div class="modal-field"><b>Editor brief</b></div>
-      ${modalField("Story beats", eb.storyBeats)}
-      ${modalField("Must keep", eb.mustKeep)}
-      ${modalField("Captions style", eb.captionsStyle)}
-      ${modalField("Music / pacing vibe", eb.musicVibe)}
-      ${modalField("CTA overlay", eb.ctaOverlay)}
-      ${modalField("Platform specs", eb.platformSpecs)}
-      ${video.assignedEditor ? modalField("Assigned editor", video.assignedEditor) : ""}
-    ` : ""}
+    ${modalField("Editing instructions", instructions)}
+    ${instructions && video.assignedEditor ? modalField("Editor", video.assignedEditor) : ""}
 
     <div class="modal-links">
       ${video.finalCutUrl && !opts.hideFinalCut ? `<a class="btn primary" href="${escapeHtml(video.finalCutUrl)}" target="_blank" rel="noopener">▶ Watch the finished video</a>` : ""}

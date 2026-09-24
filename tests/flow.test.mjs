@@ -1,15 +1,16 @@
-// Tait's flow, end to end, for Fully Launched with 30 posts over 30 days —
-// clicking the real buttons on the real built pages.
+// Tait's flow, end to end, clicking the real buttons on the real built
+// pages: 30 ideas from Claude for a client who films, plus a few for a
+// client Tait films for.
 //   node tests/flow.test.mjs 1   smooth path
-//   node tests/flow.test.mjs 2   client rejects / requests changes / sends finals back
-//   node tests/flow.test.mjs 3   operator sends edits back; editor pastes a bad link once
+//   node tests/flow.test.mjs 2   client adds suggestions / asks for changes to finished videos
+//   node tests/flow.test.mjs 3   operator asks for revisions; editor clicks Finished before uploading
 import { freshDb, makeHarness, checker } from "./harness.mjs";
 
 const RUN = Number(process.argv[2] || 1);
 const V = {
-  1: { reject: [], change: [], opRev: [], clientRev: [], post: 30, badLink: false },
-  2: { reject: [28, 29], change: [25, 26, 27], opRev: [], clientRev: [4, 5], post: 10, badLink: false },
-  3: { reject: [], change: [0], opRev: [1, 2, 3], clientRev: [6], post: 15, badLink: true },
+  1: { change: [], opRev: [], clientRev: [], post: 30, early: false },
+  2: { change: [25, 26, 27], opRev: [], clientRev: [4, 5], post: 10, early: false },
+  3: { change: [0], opRev: [1, 2, 3], clientRev: [6], post: 15, early: true },
 }[RUN];
 console.log(`Run ${RUN}:`, JSON.stringify(V));
 
@@ -18,29 +19,34 @@ const { openPage, settle } = makeHarness(db);
 const counts = checker();
 const chk = (n, cond, x) => counts.check(n, cond, x);
 
-const U = { op: "00000000-0000-0000-0000-00000000000a", ed: "00000000-0000-0000-0000-00000000000b", cl: "00000000-0000-0000-0000-00000000000d" };
+const U = { op: "00000000-0000-0000-0000-00000000000a", ed: "00000000-0000-0000-0000-00000000000b", cl: "00000000-0000-0000-0000-00000000000d", dad: "00000000-0000-0000-0000-00000000000e" };
 const FL = "d44e6fc3-dfea-42dc-902c-54724441040d";
+const DAD = "d44e6fc3-dfea-42dc-902c-54724441040e";
 await db.exec(`
-  insert into auth.users values ('${U.op}'),('${U.ed}'),('${U.cl}');
+  insert into auth.users values ('${U.op}'),('${U.ed}'),('${U.cl}'),('${U.dad}');
   insert into social_operators values ('${U.op}','Tait','tait@x');
   insert into social_editors (id,name,email) values ('${U.ed}','Morgan','m@x');
-  insert into social_clients (id,name,slug,client_system,plan_window_start,plan_window_end) values ('${FL}','Fully Launched','test-fully-launched','self-serve','2026-10-01','2026-10-31');
-  insert into social_client_users (id,client_id,email) values ('${U.cl}','${FL}','fl@x');
-  insert into social_drive_folder_links (client_id, root, footage_uploads, final_edits, brand_voice)
-    values ('${FL}','https://drive/fl','https://drive/fl-footage','https://drive/fl-final','https://drive/fl-voice');
+  insert into social_clients (id,name,slug,client_system) values
+    ('${FL}','Fully Launched','test-fully-launched','self-serve'),
+    ('${DAD}','Dad Co','dad-co','concierge');
+  insert into social_client_users (id,client_id,email) values ('${U.cl}','${FL}','fl@x'),('${U.dad}','${DAD}','dad@x');
+  insert into social_drive_folder_links (client_id, footage_uploads, final_edits) values
+    ('${FL}','https://drive/fl-footage','https://drive/fl-final'),
+    ('${DAD}','https://drive/dad-footage','https://drive/dad-final');
 `);
 
 const BASE = "https://fl.test";
 const OP = () => openPage("operator/dashboard.html", U.op, BASE + "/operator/dashboard.html");
 const CL = () => openPage("clients/portal.html", U.cl, BASE + "/clients/test-fully-launched");
-const ED = () => openPage("editor/dashboard.html", U.ed, BASE + "/editor/dashboard.html", {});
+const DADP = () => openPage("clients/portal.html", U.dad, BASE + "/clients/dad-co");
+const ED = () => openPage("editor/dashboard.html", U.ed, BASE + "/editor/dashboard.html");
 
 const iso = d => d.toISOString().slice(0, 10);
 const day = n => iso(new Date(Date.UTC(2026, 9, 1 + n)));      // Oct 1 + n
 const title = i => `Post ${String(i + 1).padStart(2, "0")} — idea ${i + 1}`;
 const plan = Array.from({ length: 30 }, (_, i) => ({
   title: title(i), platform: ["instagram", "tiktok"], hook: `Hook ${i + 1}`, overview: `Overview ${i + 1}`,
-  body: `Talking points ${i + 1}`, filmingDirection: `Film it like this: ${i + 1}`, caption: `Caption ${i + 1}`,
+  body: `Talking points ${i + 1}`, filmingDirection: `Film it like this: ${i + 1}`, editorInstructions: `Cut it like this: ${i + 1}`,
   dueToFilm: day(i - 10), dueToEdit: day(i - 7), postDate: day(i),
 }));
 
@@ -50,94 +56,89 @@ const btn = (root, text) => root && Array.from(root.querySelectorAll("button")).
 async function click(el, what) { if (!el) throw new Error("not found: " + what); el.click(); await settle(); }
 const portalCard = (p, listSel, t) => $$(p, listSel + " .card").find(c => (c.querySelector("[data-open]") || {}).textContent === t);
 const opRow = (p, listSel, t) => $$(p, listSel + " .row").find(r => (r.querySelector("b.video-card") || {}).textContent === t);
-const idOf = async t => (await db.query("select id from social_videos where title=$1", [t])).rows[0].id;
-const statusOf = async t => (await db.query("select status, note, concept_approved_at, final_cut_url from social_videos where title=$1", [t])).rows[0];
+const edCard = (p, t) => $$(p, "#queueList .card").find(c => c.querySelector("[data-open]").textContent === t);
+const statusOf = async t => (await db.query("select status, note, concept_approved_at, caption, editor_id from social_videos where title=$1", [t])).rows[0];
+const count = async (where, params = []) => (await db.query(`select count(*)::int n from social_videos where ${where}`, params)).rows[0].n;
 const allPages = [];
 const track = p => { allPages.push(p); return p; };
 
 const idx = Array.from({ length: 30 }, (_, i) => i);
-const kept = idx.filter(i => !V.reject.includes(i));
 
-// ── 1. Operator plans 30 posts with Claude and bulk-adds them ──
+// ── 1. Operator plans 30 ideas with Claude and adds them ──
 let op = track(await OP());
-await click($(op, "#bulkAddBtn"), "bulk add");
-chk("bulk add defaults to Fully Launched", $(op, "#bkClient").value === FL);
+chk("opens on To Do", $(op, "#view-todo").classList.contains("active"));
+await click($(op, "#bulkAddBtn"), "add ideas");
+chk("defaults to the first client (A–Z)", $(op, "#bkClient").value === DAD);
+$(op, "#bkClient").value = FL;
 $(op, "#bkText").value = "Here you go:\n```json\n" + JSON.stringify(plan, null, 2) + "\n```";
 $(op, "#bkText").dispatchEvent(new op.w.Event("input"));
-chk("preview shows 30", $(op, "#bkPreview").textContent.includes("30 concept(s) ready"), $(op, "#bkPreview").textContent.slice(0, 80));
-chk("preview shows edit date", $(op, "#bkPreview").textContent.includes("edit " + day(-7)));
-await click($(op, "#bkSave"), "bulk save");
-let rows = (await db.query("select title, status, due_to_film, due_to_edit, post_date, filming_instructions, concept_approved_at from social_videos order by title")).rows;
+chk("preview shows 30", $(op, "#bkPreview").textContent.includes("30 idea(s) ready"), $(op, "#bkPreview").textContent.slice(0, 80));
+await click($(op, "#bkSave"), "save ideas");
+let rows = (await db.query("select title, status, due_to_film, due_to_edit, post_date, filming_instructions, editor_brief, concept_approved_at from social_videos order by title")).rows;
 chk("30 videos created", rows.length === 30, rows.length);
 chk("each has film/edit/post dates", rows.every((r, i) => r.due_to_film === day(i - 10) && r.due_to_edit === day(i - 7) && r.post_date === day(i)), rows[0]);
-chk("each has filming instructions", rows.every(r => r.filming_instructions && r.filming_instructions.startsWith("Film it like this")));
-chk("all pending, none visible to client", rows.every(r => r.status === "concept_pending" && !r.concept_approved_at));
+chk("each has filming + editing instructions", rows.every((r, i) => r.filming_instructions === `Film it like this: ${i + 1}` && r.editor_brief.instructions === `Cut it like this: ${i + 1}`), rows[0]);
+chk("all are ideas the client can already see", rows.every(r => r.status === "concept_pending" && r.concept_approved_at));
+await click($$(op, ".nav-item").find(n => n.dataset.view === "calendar"), "calendar");
+await click(btn($(op, "#calGrid"), "›"), "calendar next month");
+chk("operator calendar shows October posts", $(op, "#calGrid").textContent.includes("October") && $$(op, "#calGrid .cal-chip").length === 30, $$(op, "#calGrid .cal-chip").length);
 
-// ── 2. Client can't see them before the operator approves ──
+// ── 2. Client reviews the 30 ideas ──
 let cl = track(await CL());
-chk("client sees nothing to approve yet", $(cl, "#videoTabs").textContent.includes("Needs your approval (0)"), $(cl, "#videoTabs").textContent);
-
-// ── 3. Operator approves all 30 ──
-op = track(await OP());
-chk("30 concepts await approval", $$(op, "#conceptsList .row").length === 30, $$(op, "#conceptsList .row").length);
-await click(btn($(op, "#approveAllWrap"), "Approve all 30"), "approve all");
-chk("all 30 approved", (await db.query("select count(*)::int n from social_videos where concept_approved_at is not null")).rows[0].n === 30);
-
-// ── 4. Client reviews the 30 ideas ──
-cl = track(await CL());
-chk("client tab shows 30 to approve", $(cl, "#videoTabs").textContent.includes("Needs your approval (30)"), $(cl, "#videoTabs").textContent);
-const c0 = portalCard(cl, "#listConcepts", title(0));
+chk("client sees 30 ideas to approve", $(cl, "#videoTabs").textContent.includes("Ideas to approve (30)"), $(cl, "#videoTabs").textContent);
+chk("client has only My Videos + Calendar", $$(cl, ".nav-item").map(n => n.dataset.view).join() === "videos,calendar");
+const c0 = portalCard(cl, "#listIdeas", title(0));
 chk("idea card shows what to say + how to film", c0 && c0.textContent.includes("Talking points 1") && c0.textContent.includes("Film it like this: 1"));
+chk("idea card has only Approve idea + Add suggestions", c0 && Array.from(c0.querySelectorAll("button")).map(b => b.textContent).join("|") === "Approve idea|Add suggestions");
+chk("client never sees editing instructions", !cl.d.body.textContent.includes("Cut it like this"));
 for (const i of idx) {
-  const card = portalCard(cl, "#listConcepts", title(i));
-  if (V.reject.includes(i)) { cl.ui.prompts.push("Not for us"); await click(btn(card, "Deny"), "deny " + i); }
-  else if (V.change.includes(i)) { cl.ui.prompts.push("Make it funnier " + i); await click(btn(card, "Request changes"), "change " + i); }
-  else await click(btn(card, "Approve"), "approve " + i);
+  const card = portalCard(cl, "#listIdeas", title(i));
+  if (V.change.includes(i)) { cl.ui.prompts.push("Make it funnier " + i); await click(btn(card, "Add suggestions"), "suggest " + i); }
+  else await click(btn(card, "Approve idea"), "approve " + i);
 }
-for (const i of V.reject) chk(`#${i} rejected`, (await statusOf(title(i))).status === "rejected");
-for (const i of V.change) { const s = await statusOf(title(i)); chk(`#${i} back with owner`, s.status === "concept_pending" && !s.concept_approved_at && s.note === "Make it funnier " + i, s); }
+for (const i of V.change) { const s = await statusOf(title(i)); chk(`#${i} back with Tait`, s.status === "concept_pending" && !s.concept_approved_at && s.note === "Make it funnier " + i, s); }
 
-// ── 5. Operator rewrites the ones with requested changes and re-approves ──
+// ── 3. Operator reworks the ideas with suggestions and sends them again ──
 if (V.change.length) {
   op = track(await OP());
   for (const i of V.change) {
-    const row = opRow(op, "#conceptsList", title(i));
-    chk(`#${i} shows client's note to operator`, row && row.textContent.includes("Make it funnier " + i));
-    op.w.openVideoForm(await idOf(title(i))); await settle();
+    const row = opRow(op, "#ideasList", title(i));
+    chk(`#${i} shows client's suggestion`, row && row.textContent.includes("Make it funnier " + i));
+    await click(btn(row, "✏️ Edit"), "edit " + i);
     $(op, '[data-f="hook"]').value = "Funnier hook " + i;
     $(op, '[data-f="note"]').value = "";
     await click($(op, "#vfSave"), "save rewrite");
-    await click(btn(opRow(op, "#conceptsList", title(i)), "Approve concept"), "reapprove " + i);
   }
+  if (V.change.length > 1) await click(btn($(op, "#sendAllWrap"), "Send all"), "send all");
+  else await click(btn(opRow(op, "#ideasList", title(V.change[0])), "Send to client"), "send again");
+  chk("reworked ideas visible again", (await count("status='concept_pending' and concept_approved_at is not null")) === V.change.length);
   cl = track(await CL());
   for (const i of V.change) {
-    const card = portalCard(cl, "#listConcepts", title(i));
+    const card = portalCard(cl, "#listIdeas", title(i));
     chk(`client sees rewrite #${i}`, card && card.textContent.includes("Funnier hook " + i));
-    await click(btn(card, "Approve"), "approve rewrite " + i);
+    await click(btn(card, "Approve idea"), "approve rewrite " + i);
   }
 }
+chk("all 30 approved → to film", (await count("status='to_film'")) === 30);
 
-// ── 6. Client films and uploads ──
+// ── 4. Client films and uploads ──
 cl = track(await CL());
-chk(`To film shows ${kept.length}`, $(cl, "#videoTabs").textContent.includes(`To film (${kept.length})`), $(cl, "#videoTabs").textContent);
-const f0 = portalCard(cl, "#listToFilm", title(kept[0]));
-chk("upload link is on the card", f0 && !!f0.querySelector('a[href="https://drive/fl-footage"]'));
-chk("file naming hint on the card", f0 && f0.textContent.includes("Name your files starting with"));
-for (const i of kept) await click(btn(portalCard(cl, "#listToFilm", title(i)), "I've uploaded my footage"), "uploaded " + i);
-chk("all uploaded → ready to edit", (await db.query("select count(*)::int n from social_videos where status='ready_to_edit'")).rows[0].n === kept.length);
-chk(`In progress shows ${kept.length}`, $(cl, "#videoTabs").textContent.includes(`In progress (${kept.length})`), $(cl, "#videoTabs").textContent);
+chk("To film shows 30", $(cl, "#videoTabs").textContent.includes("To film (30)"), $(cl, "#videoTabs").textContent);
+const f0 = portalCard(cl, "#listToFilm", title(0));
+chk("Raw footage here link on the card", f0 && Array.from(f0.querySelectorAll('a[href="https://drive/fl-footage"]')).some(a => a.textContent.includes("Raw footage here")));
+for (const i of idx) await click(btn(portalCard(cl, "#listToFilm", title(i)), "Uploaded footage"), "uploaded " + i);
+chk("all uploaded → back to Tait", (await count("status='ready_to_edit'")) === 30);
 
-// ── 7. Operator sends each to the editor ──
+// ── 5. Operator assigns the editor ──
 op = track(await OP());
-chk(`${kept.length} ready for an editor`, $$(op, "#toEditorList .row").length === kept.length);
-for (const i of kept) {
-  // The first one goes through the popup, which sits over the video's own
-  // row: each has a picker, and the popup's must be the one that counts.
-  if (i === kept[0]) {
-    await click(opRow(op, "#toEditorList", title(i)).querySelector("b.video-card"), "open popup " + i);
+chk("30 ready for an editor", $$(op, "#toEditorList .row").length === 30);
+for (const i of idx) {
+  // The first goes through the popup, which sits over the video's own row.
+  if (i === 0) {
+    await click(opRow(op, "#toEditorList", title(i)).querySelector("b.video-card"), "open popup");
     const box = $(op, "#videoModalBox .modal-actions");
     box.querySelector("select").value = U.ed;
-    await click(btn(box, "Send to editor"), "send from popup " + i);
+    await click(btn(box, "Send to editor"), "send from popup");
     chk("popup picker sends to the editor", !op.ui.alerts.length, op.ui.alerts);
     continue;
   }
@@ -145,105 +146,134 @@ for (const i of kept) {
   row.querySelector("select").value = U.ed;
   await click(btn(row, "Send to editor"), "send " + i);
 }
-chk("all with editor", (await db.query("select count(*)::int n from social_videos where status='with_editor' and editor_id=$1", [U.ed])).rows[0].n === kept.length);
+chk("all with the editor", (await count("status='with_editor' and editor_id=$1", [U.ed])) === 30);
 
-// ── 8. Editor edits and finishes each ──
-async function editorFinish(list, suffix) {
+// ── 6. Editor edits and finishes ──
+async function editorFinish(list) {
   const ed = track(await ED());
-  for (const i of list) {
-    const card = $$(ed, "#queueList .card").find(c => c.querySelector("[data-open]").textContent === title(i));
-    if (!card) throw new Error("editor can't find " + title(i));
-    await click(btn(card, "Finished"), "finish " + i + suffix);
-  }
+  for (const i of list) await click(btn(edCard(ed, title(i)), "Finished"), "finish " + i);
   return ed;
 }
 let ed = track(await ED());
-chk(`editor queue has ${kept.length}`, $$(ed, "#queueList .card").length === kept.length);
-const e0 = $$(ed, "#queueList .card")[0];
-chk("editor sees footage + upload links + instructions", e0.querySelector('a[href="https://drive/fl-footage"]') && e0.querySelector('a[href="https://drive/fl-final"]') && e0.textContent.includes("Hook"));
-chk("editor told to name the file after the video", e0.textContent.includes("name it " + e0.querySelector("[data-open]").textContent));
-if (V.badLink) {
-  // Editor clicks Finished but hasn't uploaded yet: says no, nothing moves.
-  const t = e0.querySelector("[data-open]").textContent;
+chk("editor has only To Edit + Calendar", $$(ed, ".nav-item").map(n => n.dataset.view).join() === "queue,calendar");
+chk("editor queue has 30", $$(ed, "#queueList .card").length === 30);
+const e0 = edCard(ed, title(0));
+chk("editor card: raw footage, finished folder, instructions, edit-by date",
+  e0.querySelector('a[href="https://drive/fl-footage"]') && e0.querySelector('a[href="https://drive/fl-final"]') && e0.textContent.includes("Cut it like this: 1") && e0.textContent.includes(day(-7)));
+chk("editor told to name the file after the video", e0.textContent.includes("name it " + title(0)));
+await click($$(ed, ".nav-item").find(n => n.dataset.view === "calendar"), "editor calendar");
+chk("editor calendar has the edit dates", $$(ed, "#calGrid .cal-chip").length > 0);
+if (V.early) {
   ed.w.confirm = m => { ed.ui.confirms.push(m); return false; };
   await click(btn(e0, "Finished"), "not uploaded yet");
   ed.w.confirm = m => { ed.ui.confirms.push(m); return true; };
-  chk("not uploaded yet: still with editor", (await statusOf(t)).status === "with_editor");
+  chk("not uploaded yet: still with editor", (await statusOf(title(0))).status === "with_editor");
 }
-const edF = await editorFinish(kept, "");
-chk("Finished asks about the Final edits folder, no link prompt", edF.ui.confirms.length === kept.length && edF.ui.confirms[0].includes("Final edits folder") && !edF.ui.promptsShown.length, [edF.ui.confirms[0], edF.ui.promptsShown]);
-chk("all delivered, no link needed", (await db.query("select count(*)::int n from social_videos where status='in_review' and final_cut_url is null")).rows[0].n === kept.length);
+const edF = await editorFinish(idx);
+chk("Finished asks about the folder, never for a link", edF.ui.confirms[0].includes("finished video folder") && !edF.ui.promptsShown.length, [edF.ui.confirms[0], edF.ui.promptsShown]);
+chk("all back to Tait for review", (await count("status='in_review'")) === 30);
 
-// ── 9. Operator reviews edits ──
+// ── 7. Operator reviews: revisions, or approve + caption ──
+async function approveWithCaption(p, i) {
+  await click(btn(opRow(p, "#editsList", title(i)), "Approve & add caption"), "approve edit " + i);
+  $(p, '#videoModalBox [data-f="caption"]').value = "Caption " + (i + 1);
+  await click($(p, "#aeSave"), "save caption " + i);
+}
 op = track(await OP());
-const r0 = opRow(op, "#editsList", title(kept[0]));
-chk("operator's Watch opens the Final edits folder", r0 && !!r0.querySelector('a[href="https://drive/fl-final"]'));
-for (const i of kept) {
-  const row = opRow(op, "#editsList", title(i));
-  if (V.opRev.includes(i)) { op.ui.prompts.push("Tighten the intro " + i); await click(btn(row, "Request revisions"), "op rev " + i); }
-  else await click(btn(row, "Approve edit"), "approve edit " + i);
+const r0 = opRow(op, "#editsList", title(0));
+chk("Watch opens the finished video folder", r0 && !!r0.querySelector('a[href="https://drive/fl-final"]'));
+// A caption is required.
+await click(btn(r0, "Approve & add caption"), "approve without caption");
+await click($(op, "#aeSave"), "save empty caption");
+chk("caption required", $(op, "#aeError").textContent.includes("caption") && (await statusOf(title(0))).status === "in_review");
+op.w.closeVideoModal();
+for (const i of idx) {
+  if (V.opRev.includes(i)) { op.ui.prompts.push("Tighten the intro " + i); await click(btn(opRow(op, "#editsList", title(i)), "Revisions needed"), "revisions " + i); }
+  else await approveWithCaption(op, i);
 }
 if (V.opRev.length) {
   ed = track(await ED());
-  for (const i of V.opRev) {
-    const card = $$(ed, "#queueList .card").find(c => c.querySelector("[data-open]").textContent === title(i));
-    chk(`editor sees operator's note #${i}`, card && card.textContent.includes("Tighten the intro " + i));
-  }
-  await editorFinish(V.opRev, "-v2");
+  for (const i of V.opRev) chk(`editor sees Tait's note #${i}`, edCard(ed, title(i))?.textContent.includes("Tighten the intro " + i));
+  await editorFinish(V.opRev);
   op = track(await OP());
-  for (const i of V.opRev) await click(btn(opRow(op, "#editsList", title(i)), "Approve edit"), "approve v2 " + i);
+  for (const i of V.opRev) await approveWithCaption(op, i);
 }
+chk("all 30 with the client, captioned", (await count("status='client_review' and caption like 'Caption %'")) === 30);
 
-// ── 10. Client final approval ──
+// ── 8. Client approves for posting ──
 cl = track(await CL());
-chk(`client has ${kept.length} finished videos to approve`, $$(cl, "#listReview .card").length === kept.length, $$(cl, "#listReview .card").length);
-const fr = portalCard(cl, "#listReview", title(kept[0]));
-chk("client can watch the finished video", fr && !!fr.querySelector('a[href="https://drive/fl-final"]'));
-for (const i of kept) {
-  const card = portalCard(cl, "#listReview", title(i));
-  if (V.clientRev.includes(i)) { cl.ui.prompts.push("Use the other take " + i); await click(btn(card, "Request revisions"), "client rev " + i); }
-  else await click(btn(card, "Approve — ready to post"), "final approve " + i);
+chk("client has 30 finished videos to approve", $(cl, "#videoTabs").textContent.includes("Finished videos to approve (30)"), $(cl, "#videoTabs").textContent);
+const fr = portalCard(cl, "#listFinal", title(0));
+chk("client can watch it and read the caption", fr && !!fr.querySelector('a[href="https://drive/fl-final"]') && fr.textContent.includes("Caption 1"));
+for (const i of idx) {
+  const card = portalCard(cl, "#listFinal", title(i));
+  if (V.clientRev.includes(i)) { cl.ui.prompts.push("Use the other take " + i); await click(btn(card, "Request changes"), "client changes " + i); }
+  else await click(btn(card, "Approve for posting"), "approve for posting " + i);
 }
 if (V.clientRev.length) {
-  await editorFinish(V.clientRev, "-v3");
+  await editorFinish(V.clientRev);
   op = track(await OP());
-  for (const i of V.clientRev) await click(btn(opRow(op, "#editsList", title(i)), "Approve edit"), "approve v3 " + i);
+  for (const i of V.clientRev) {
+    await click(btn(opRow(op, "#editsList", title(i)), "Approve & add caption"), "approve again " + i);
+    chk(`caption kept for #${i}`, $(op, '#videoModalBox [data-f="caption"]').value === "Caption " + (i + 1));
+    await click($(op, "#aeSave"), "resend " + i);
+  }
   cl = track(await CL());
-  for (const i of V.clientRev) await click(btn(portalCard(cl, "#listReview", title(i)), "Approve — ready to post"), "final v3 " + i);
+  for (const i of V.clientRev) await click(btn(portalCard(cl, "#listFinal", title(i)), "Approve for posting"), "final again " + i);
 }
-chk("all kept videos ready to post", (await db.query("select count(*)::int n from social_videos where status='ready_to_post'")).rows[0].n === kept.length);
+chk("all 30 ready to post", (await count("status='ready_to_post'")) === 30);
 
-// ── 11. Operator posts ──
+// ── 9. Posting ──
 op = track(await OP());
-chk(`Ready to Post lists ${kept.length}`, $$(op, "#postList > .card").length === kept.length, $$(op, "#postList > .card").length);
-const postCard0 = $$(op, "#postList > .card")[0];
-chk("Ready to Post shows caption + finished video", postCard0.textContent.includes("Caption") && !!postCard0.querySelector('a[href="https://drive/fl-final"]'));
-chk("Ready to Post is in post-date order", postCard0.textContent.includes(title(kept[0])));
+chk("Ready to Post lists 30", $$(op, "#postList > .card").length === 30, $$(op, "#postList > .card").length);
+const p0 = $$(op, "#postList > .card")[0];
+chk("in post-date order, with date, caption, finished video", p0.textContent.includes(title(0)) && p0.textContent.includes("Post " + day(0)) && p0.textContent.includes("Caption 1") && !!p0.querySelector('a[href="https://drive/fl-final"]'));
 for (let n = 0; n < V.post; n++) await click(btn($$(op, "#postList > .card")[0], "Mark posted"), "post " + n);
-chk(`${V.post} posted`, (await db.query("select count(*)::int n from social_videos where status='posted'")).rows[0].n === V.post);
+chk(`${V.post} posted`, (await count("status='posted'")) === V.post);
 
-// ── 12. Client sees ready + posted, and the calendar ──
+// ── 10. Client calendar ──
 cl = track(await CL());
-const readyN = kept.length - V.post;
-if (!$(cl, '#videoTabs')) { console.log('DEBUG url', cl.w.location.href, 'errors', cl.ui.errors, 'body', (cl.d.body||{}).innerHTML?.slice(0,300)); }
-chk(`client: Ready & posted (${kept.length})`, $(cl, "#videoTabs").textContent.includes(`Ready & posted (${kept.length})`), $(cl, "#videoTabs").textContent);
-chk(`client: ${readyN} ready, ${V.post} posted`, $$(cl, "#listReady .card").length === readyN && $$(cl, "#listPosted .card").length === V.post);
-chk("client home stats link to tabs", $$(cl, "#homeStats .stat-card").length === 4);
-await click(btn($(cl, "#calGrid"), "›"), "calendar next month");
-chk("client calendar shows October film + post dates", $(cl, "#calGrid").textContent.includes("October") && $(cl, "#calGrid").textContent.includes("📣") && $$(cl, "#calGrid .cal-chip").length >= 20);
+await click($$(cl, ".nav-item").find(n => n.dataset.view === "calendar"), "client calendar");
+await click(btn($(cl, "#calGrid"), "›"), "client calendar next month");
+chk("client calendar shows all 30 posts", $(cl, "#calGrid").textContent.includes("October") && $$(cl, "#calGrid .cal-chip").length === 30, $$(cl, "#calGrid .cal-chip").length);
 
-// ── 13. Audit trail for one ordinary video ──
-const plain = kept.find(i => ![...V.change, ...V.opRev, ...V.clientRev].includes(i));
-const trail = (await db.query("select a.action, a.changed_by_role r from social_status_audit_log a join social_videos v on v.id=a.video_id where v.title=$1 order by a.id", [title(plain)])).rows.map(x => x.action + ":" + x.r).join(" > ");
-const want = "created:operator > approve_concept:operator > approve_concept:client > mark_filmed:client > mark_ready_to_edit:client > direct_update:operator > mark_delivered:editor > direct_update:operator > approve_final:client" + (plain < V.post ? " > direct_update:operator" : "");
+// ── 11. A client Tait films for ──
+op = track(await OP());
+op.w.openBulkAdd(DAD); await settle();
+$(op, "#bkText").value = JSON.stringify([1, 2].map(n => ({ title: "Dad " + n, hook: "Dad hook " + n, postDate: day(n) })));
+$(op, "#bkText").dispatchEvent(new op.w.Event("input"));
+await click($(op, "#bkSave"), "save dad ideas");
+chk("Tait-films ideas skip client approval", (await count("client_id=$1 and status='to_film'", [DAD])) === 2);
+let dad = track(await DADP());
+chk("that client only has finished videos to approve", $(dad, "#videoTabs").textContent === "Finished videos to approve (0)", $(dad, "#videoTabs").textContent);
+op = track(await OP());
+const d1 = opRow(op, "#toEditorList", "Dad 1");
+chk("Tait films it: raw footage link + send to editor", d1 && !!d1.querySelector('a[href="https://drive/dad-footage"]') && !!btn(d1, "Send to editor"));
+for (const t of ["Dad 1", "Dad 2"]) { const r = opRow(op, "#toEditorList", t); r.querySelector("select").value = U.ed; await click(btn(r, "Send to editor"), "send " + t); }
+ed = track(await ED());
+for (const t of ["Dad 1", "Dad 2"]) await click(btn(edCard(ed, t), "Finished"), "finish " + t);
+op = track(await OP());
+for (const t of ["Dad 1", "Dad 2"]) {
+  await click(btn(opRow(op, "#editsList", t), "Approve & add caption"), "approve " + t);
+  $(op, '#videoModalBox [data-f="caption"]').value = t + " caption";
+  await click($(op, "#aeSave"), "caption " + t);
+}
+dad = track(await DADP());
+for (const t of ["Dad 1", "Dad 2"]) await click(btn(portalCard(dad, "#listFinal", t), "Approve for posting"), "dad approves " + t);
+chk("Tait-films videos ready to post", (await count("client_id=$1 and status='ready_to_post'", [DAD])) === 2);
+
+// ── 12. Audit trail for one ordinary video ──
+const plainI = idx.find(i => ![...V.change, ...V.opRev, ...V.clientRev].includes(i) && !(V.early && i === 0));
+const trail = (await db.query("select a.action, a.changed_by_role r from social_status_audit_log a join social_videos v on v.id=a.video_id where v.title=$1 order by a.id", [title(plainI)])).rows.map(x => x.action + ":" + x.r).join(" > ");
+const want = "created:operator > approve_concept:client > mark_filmed:client > mark_ready_to_edit:client > direct_update:operator > mark_delivered:editor > direct_update:operator > approve_final:client" + (plainI < V.post ? " > direct_update:operator" : "");
 chk("audit trail records every step", trail === want, trail);
 
-// ── 14. Nothing broke along the way ──
+// ── 13. Nothing broke along the way ──
 const errs = allPages.flatMap(p => p.ui.errors);
 chk("no page errors", errs.length === 0, errs);
 const failed = allPages.flatMap(p => p.ui.log.filter(l => l.error));
 chk("no failed database calls", failed.length === 0, failed);
-const unexpectedAlerts = allPages.flatMap(p => p.ui.alerts).filter(a => !a.startsWith("Added 30") && !a.includes("doesn't look like a link"));
+const unexpectedAlerts = allPages.flatMap(p => p.ui.alerts).filter(a => !a.startsWith("Added "));
 chk("no unexpected error popups", unexpectedAlerts.length === 0, unexpectedAlerts);
 
 console.log(`Run ${RUN}: ${counts.pass} passed, ${counts.fail} failed`);
