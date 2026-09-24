@@ -31,7 +31,8 @@ chk("popup links to that editor's portal", !!link);
 
 // Editor portal as operator, opened on Morgan's work.
 const url = "https://fl.test/editor/dashboard.html?editor=" + ED;
-const p = await openPage("editor/dashboard.html", OP, url, { promptDefault: "https://drive/cut/morgan" });
+const p = await openPage("editor/dashboard.html", OP, url);
+chk("warns when the client has no Final edits folder", p.d.getElementById("queueList").textContent.includes("no Final edits folder"));
 chk("operator banner shows", p.d.getElementById("operatorBanner").textContent.includes("as the operator"));
 const cards = () => Array.from(p.d.querySelectorAll("#queueList .card"));
 const titles = () => cards().map(c => c.querySelector("[data-open]").textContent);
@@ -39,7 +40,8 @@ chk("opens filtered to Morgan", titles().length === 1 && titles()[0] === "Morgan
 const fin = t => cards().find(c => c.querySelector("[data-open]").textContent === t)?.querySelector("button.primary");
 fin("Morgan edits this").click(); await settle();
 let r = (await db.query("select status, final_cut_url from social_videos where title='Morgan edits this'")).rows[0];
-chk("operator finished Morgan's video", r.status === "in_review" && r.final_cut_url === "https://drive/cut/morgan", r);
+chk("operator finished Morgan's video", r.status === "in_review" && r.final_cut_url === null, r);
+chk("no link asked for", !p.ui.promptsShown.length && p.ui.confirms.some(m => m.includes("Final edits folder")), p.ui.confirms);
 
 // All editors, then Tait's own.
 Array.from(p.d.querySelectorAll("#editorChips .chip")).find(c => c.textContent === "All editors").click(); await settle();
@@ -47,6 +49,14 @@ chk("Tait's video visible under All editors", titles().includes("Tait edits this
 fin("Tait edits this").click(); await settle();
 r = (await db.query("select status from social_videos where title='Tait edits this'")).rows[0];
 chk("operator finished their own video", r.status === "in_review", r);
+
+// A link to the exact file, if the operator adds one, beats the folder.
+await db.exec(`insert into social_drive_folder_links (client_id, final_edits) values ('${FL}','https://drive/fl-final');
+  update social_videos set final_cut_url = 'https://drive/exact' where title = 'Tait edits this';`);
+const op2 = await openPage("operator/dashboard.html", OP, "https://fl.test/operator/dashboard.html");
+const w = t => Array.from(op2.d.querySelectorAll("#editsList .row")).find(r => r.querySelector("b.video-card").textContent === t);
+chk("Watch opens the exact file when set", !!w("Tait edits this")?.querySelector('a[href="https://drive/exact"]'));
+chk("otherwise Watch opens the Final edits folder", !!w("Morgan edits this")?.querySelector('a[href="https://drive/fl-final"]'));
 
 const log = (await db.query("select changed_by_role from social_status_audit_log where action <> 'created'")).rows;
 chk("logged as operator", log.length === 2 && log.every(x => x.changed_by_role === "operator"), log);

@@ -33,7 +33,7 @@ await db.exec(`
 const BASE = "https://fl.test";
 const OP = () => openPage("operator/dashboard.html", U.op, BASE + "/operator/dashboard.html");
 const CL = () => openPage("clients/portal.html", U.cl, BASE + "/clients/test-fully-launched");
-const ED = () => openPage("editor/dashboard.html", U.ed, BASE + "/editor/dashboard.html", { promptDefault: "https://drive/cut/default" });
+const ED = () => openPage("editor/dashboard.html", U.ed, BASE + "/editor/dashboard.html", {});
 
 const iso = d => d.toISOString().slice(0, 10);
 const day = n => iso(new Date(Date.UTC(2026, 9, 1 + n)));      // Oct 1 + n
@@ -153,8 +153,7 @@ async function editorFinish(list, suffix) {
   for (const i of list) {
     const card = $$(ed, "#queueList .card").find(c => c.querySelector("[data-open]").textContent === title(i));
     if (!card) throw new Error("editor can't find " + title(i));
-    ed.ui.prompts.push(`https://drive/cut/${i}${suffix}`);
-    await click(btn(card, "Finished"), "finish " + i);
+    await click(btn(card, "Finished"), "finish " + i + suffix);
   }
   return ed;
 }
@@ -162,19 +161,23 @@ let ed = track(await ED());
 chk(`editor queue has ${kept.length}`, $$(ed, "#queueList .card").length === kept.length);
 const e0 = $$(ed, "#queueList .card")[0];
 chk("editor sees footage + upload links + instructions", e0.querySelector('a[href="https://drive/fl-footage"]') && e0.querySelector('a[href="https://drive/fl-final"]') && e0.textContent.includes("Hook"));
+chk("editor told to name the file after the video", e0.textContent.includes("name it " + e0.querySelector("[data-open]").textContent));
 if (V.badLink) {
-  ed.ui.prompts.push("not a link");
+  // Editor clicks Finished but hasn't uploaded yet: says no, nothing moves.
   const t = e0.querySelector("[data-open]").textContent;
-  await click(btn(e0, "Finished"), "bad link");
-  chk("bad link rejected, still with editor", (await statusOf(t)).status === "with_editor" && ed.ui.alerts.some(a => a.includes("doesn't look like a link")));
+  ed.w.confirm = m => { ed.ui.confirms.push(m); return false; };
+  await click(btn(e0, "Finished"), "not uploaded yet");
+  ed.w.confirm = m => { ed.ui.confirms.push(m); return true; };
+  chk("not uploaded yet: still with editor", (await statusOf(t)).status === "with_editor");
 }
-await editorFinish(kept, "");
-chk("all delivered with links", (await db.query("select count(*)::int n from social_videos where status='in_review' and final_cut_url like 'https://drive/cut/%'")).rows[0].n === kept.length);
+const edF = await editorFinish(kept, "");
+chk("Finished asks about the Final edits folder, no link prompt", edF.ui.confirms.length === kept.length && edF.ui.confirms[0].includes("Final edits folder") && !edF.ui.promptsShown.length, [edF.ui.confirms[0], edF.ui.promptsShown]);
+chk("all delivered, no link needed", (await db.query("select count(*)::int n from social_videos where status='in_review' and final_cut_url is null")).rows[0].n === kept.length);
 
 // ── 9. Operator reviews edits ──
 op = track(await OP());
 const r0 = opRow(op, "#editsList", title(kept[0]));
-chk("operator has a Watch link on edits", r0 && !!r0.querySelector(`a[href="https://drive/cut/${kept[0]}"]`));
+chk("operator's Watch opens the Final edits folder", r0 && !!r0.querySelector('a[href="https://drive/fl-final"]'));
 for (const i of kept) {
   const row = opRow(op, "#editsList", title(i));
   if (V.opRev.includes(i)) { op.ui.prompts.push("Tighten the intro " + i); await click(btn(row, "Request revisions"), "op rev " + i); }
@@ -189,14 +192,13 @@ if (V.opRev.length) {
   await editorFinish(V.opRev, "-v2");
   op = track(await OP());
   for (const i of V.opRev) await click(btn(opRow(op, "#editsList", title(i)), "Approve edit"), "approve v2 " + i);
-  for (const i of V.opRev) chk(`#${i} has v2 link`, (await statusOf(title(i))).final_cut_url === `https://drive/cut/${i}-v2`);
 }
 
 // ── 10. Client final approval ──
 cl = track(await CL());
 chk(`client has ${kept.length} finished videos to approve`, $$(cl, "#listReview .card").length === kept.length, $$(cl, "#listReview .card").length);
 const fr = portalCard(cl, "#listReview", title(kept[0]));
-chk("client can watch the finished video", fr && !!fr.querySelector('a[href^="https://drive/cut/"]'));
+chk("client can watch the finished video", fr && !!fr.querySelector('a[href="https://drive/fl-final"]'));
 for (const i of kept) {
   const card = portalCard(cl, "#listReview", title(i));
   if (V.clientRev.includes(i)) { cl.ui.prompts.push("Use the other take " + i); await click(btn(card, "Request revisions"), "client rev " + i); }
@@ -215,7 +217,7 @@ chk("all kept videos ready to post", (await db.query("select count(*)::int n fro
 op = track(await OP());
 chk(`Ready to Post lists ${kept.length}`, $$(op, "#postList > .card").length === kept.length, $$(op, "#postList > .card").length);
 const postCard0 = $$(op, "#postList > .card")[0];
-chk("Ready to Post shows caption + finished video", postCard0.textContent.includes("Caption") && !!postCard0.querySelector('a[href^="https://drive/cut/"]'));
+chk("Ready to Post shows caption + finished video", postCard0.textContent.includes("Caption") && !!postCard0.querySelector('a[href="https://drive/fl-final"]'));
 chk("Ready to Post is in post-date order", postCard0.textContent.includes(title(kept[0])));
 for (let n = 0; n < V.post; n++) await click(btn($$(op, "#postList > .card")[0], "Mark posted"), "post " + n);
 chk(`${V.post} posted`, (await db.query("select count(*)::int n from social_videos where status='posted'")).rows[0].n === V.post);

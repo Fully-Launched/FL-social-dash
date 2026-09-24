@@ -226,7 +226,7 @@ function videoCard(video) {
   card.className = "card";
   const platforms = (video.platform || []).join(" · ");
   const showFootage = DRIVE_FOLDERS.footageUploads && IS_SELF_SERVE && ["to_film", "filmed"].includes(video.status);
-  const showWatch = video.finalCutUrl && ["client_review", "ready_to_post", "posted"].includes(video.status);
+  const watch = ["client_review", "ready_to_post", "posted"].includes(video.status) ? finishedVideoLink(video, DRIVE_FOLDERS) : null;
   card.innerHTML = `
     <div class="row" style="border:none;padding:0 0 10px">
       <div class="left"><b class="video-card" style="display:inline-block" data-open>${escapeHtml(video.title || "(untitled)")}</b>
@@ -242,7 +242,7 @@ function videoCard(video) {
     ${showFootage ? `<div class="meta" style="margin-top:10px">Name your files starting with <b>${escapeHtml(video.title || "the video title")}</b> so the editor can find them.</div>` : ""}
     <div class="actions" style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
       ${IS_OPERATOR ? `<button onclick="openPortalEditForm('${video.id}')">✏️ Edit</button>` : ""}
-      ${showWatch ? `<a class="btn primary" href="${escapeHtml(video.finalCutUrl)}" target="_blank" rel="noopener">▶ Watch the video</a>` : ""}
+      ${watch ? `<a class="btn primary" href="${escapeHtml(watch.url)}" target="_blank" rel="noopener">${video.finalCutUrl ? "▶ Watch the video" : "▶ Watch it in Finished videos"}</a>` : ""}
       ${showFootage ? `<a class="btn" href="${escapeHtml(DRIVE_FOLDERS.footageUploads)}" target="_blank" rel="noopener">📁 Upload footage</a>` : ""}
     </div>
   `;

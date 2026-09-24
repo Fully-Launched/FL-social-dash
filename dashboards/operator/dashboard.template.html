@@ -223,7 +223,7 @@ async function liveSetDate(id, field, value) { await updateVideo(id, { [field]: 
 
 // ---------- shared row + modal ----------
 function rowHtml(x, rightHtml) {
-  const v = x.video;
+  const v = x.video, watch = finishedVideoLink(v, x.client.driveFolders);
   const meta = [x.client.name, (v.platform || []).join(" · "),
     v.dueToFilm ? "film by " + v.dueToFilm : null,
     v.dueToEdit ? "edit by " + v.dueToEdit : null,
@@ -233,8 +233,8 @@ function rowHtml(x, rightHtml) {
     <div class="left"><b class="video-card" style="display:inline-block" onclick="openOperatorVideoModal('${v.id}')">${escapeHtml(v.title || "(untitled)")}</b>
       <div class="meta">${escapeHtml(meta)}</div>
       ${v.note ? `<div class="meta">Note: ${escapeHtml(v.note)}</div>` : ""}</div>
-    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${v.finalCutUrl && ["in_review","client_review","ready_to_post","posted"].includes(v.status)
-      ? `<a class="btn" style="font-size:0.78rem;padding:5px 10px" href="${escapeHtml(v.finalCutUrl)}" target="_blank" rel="noopener">▶ Watch</a>` : ""}${rightHtml || statusBadge(v.status, STATUS_LABEL)}</div>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${watch && ["in_review","client_review","ready_to_post","posted"].includes(v.status)
+      ? `<a class="btn" style="font-size:0.78rem;padding:5px 10px" href="${escapeHtml(watch.url)}" target="_blank" rel="noopener">${watch.label}</a>` : ""}${rightHtml || statusBadge(v.status, STATUS_LABEL)}</div>
   </div>`;
 }
 function smallBtn(label, onclick, cls) {
@@ -332,7 +332,7 @@ function openVideoForm(id, presetClientId) {
     ${textField("filmingDirection", "Filming instructions", v.filmingDirection, 3)}
     ${textField("caption", "Caption", v.caption, 3)}
     ${textField("note", "Note (shown to the client and the editor)", v.note, 2)}
-    ${textField("finalCutUrl", "Finished video link (the editor adds this when they finish)", v.finalCutUrl)}
+    ${textField("finalCutUrl", "Link to the exact finished file (optional; Watch opens the Final edits folder without it)", v.finalCutUrl)}
     <h3 style="font-size:0.85rem;margin:14px 0 8px;color:var(--sub)">Editor brief (never shown to the client)</h3>
     ${BRIEF_FIELDS.map(([k, label]) => textField("brief." + k, label, eb[k], 2)).join("")}
     <div class="auth-error" id="vfError"></div>

@@ -29,7 +29,7 @@
   <div id="loadError"></div>
 
   <section class="view active" id="view-queue">
-    <div class="page-head"><h1>To Edit</h1><p>Videos assigned to you. For each one: download the footage, follow the brief, upload the finished video to the finished-videos folder, then tap <b>Finished — send for review</b> and paste its link. If one comes back here with a note, the owner or the client asked for a change.</p></div>
+    <div class="page-head"><h1>To Edit</h1><p>Videos assigned to you. For each one: download the footage, follow the brief, upload the finished video to the Final edits folder named after the video, then tap <b>Finished — send for review</b>. If one comes back here with a note, the owner or the client asked for a change.</p></div>
     <div class="chip-row" id="editorChips"></div>
     <div id="queueList"></div>
   </section>
@@ -105,23 +105,24 @@ function visible() {
 }
 function queue() { return visible().filter(x => x.video.status === "with_editor"); }
 
-// Asks for the Drive link to the finished cut, so the owner and client can
-// watch exactly this video when reviewing it.
+// The finished video goes in the client's Final edits folder, named after
+// the video, so there's no link to paste; the owner and client open it
+// from that folder.
 async function finishVideo(videoId, btn) {
-  const url = prompt("Paste the Google Drive link to the finished video (make sure it's shared so the owner and client can open it):");
-  if (url === null) return;
-  if (!/^https?:\/\//i.test(url.trim())) { alert("That doesn't look like a link — it should start with https://"); return; }
-  await markDelivered(videoId, btn, url.trim());
+  const x = VIDEOS.find(y => y.video.id === videoId);
+  const t = x ? x.video.title || "this video" : "this video";
+  if (!confirm(`Have you uploaded the finished video to the Final edits folder, named "${t}"?`)) return;
+  await markDelivered(videoId, btn);
 }
 
-async function markDelivered(videoId, btn, finalCutUrl) {
+async function markDelivered(videoId, btn) {
   if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
   let err = null;
   if (ROLE === "editor") {
-    const r = await runVideoAction("mark_delivered", videoId, null, finalCutUrl);
+    const r = await runVideoAction("mark_delivered", videoId);
     err = r.error;
   } else {
-    const { data, error } = await sbClient.from("social_videos").update({ status: "in_review", final_cut_url: finalCutUrl }).eq("id", videoId).eq("status", "with_editor").select("id");
+    const { data, error } = await sbClient.from("social_videos").update({ status: "in_review" }).eq("id", videoId).eq("status", "with_editor").select("id");
     err = error ? error.message : (!data || !data.length ? "It's no longer with the editor — reload to see its current status." : null);
   }
   if (err) {
@@ -177,6 +178,9 @@ function renderQueue() {
           ${eb.platformSpecs ? fieldBlock("Platform specs", eb.platformSpecs) : ""}
         </div>
       </div>
+      <div class="meta" style="margin-top:10px">${f.finalEdits
+        ? `Upload the finished video to the Final edits folder and name it <b>${escapeHtml(video.title || "after the video")}</b>.`
+        : `<b style="color:var(--red)">This client has no Final edits folder yet.</b> Ask the operator to add one before you finish this.`}</div>
       <div class="actions" style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
         ${f.footageUploads ? `<a class="btn" href="${escapeHtml(f.footageUploads)}" target="_blank" rel="noopener">📁 Footage</a>` : ""}
         ${f.finalEdits ? `<a class="btn" href="${escapeHtml(f.finalEdits)}" target="_blank" rel="noopener">⬆️ Upload finished video here</a>` : ""}
