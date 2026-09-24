@@ -24,7 +24,7 @@ await db.exec(`
 `);
 
 const op = await openPage("operator/dashboard.html", OP, "https://fl.test/operator/dashboard.html");
-const row = t => Array.from(op.d.querySelectorAll("#clientWaitingList .row, #conceptsList .row"))
+const row = t => Array.from(op.d.querySelectorAll("#clientWaitingList .row, #ideasList .row"))
   .find(r => (r.querySelector("b.video-card") || {}).textContent === t);
 const btn = r => r && Array.from(r.querySelectorAll("button")).find(b => b.textContent.trim() === "Approve for client");
 const statusOf = async t => (await db.query("select status from social_videos where title=$1", [t])).rows[0].status;

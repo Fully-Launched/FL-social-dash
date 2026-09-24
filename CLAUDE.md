@@ -68,6 +68,8 @@ last.
 3. **Two gates stay human.** The agency owner approves every concept before
    the client sees it, and every edit before delivery. Skills draft toward
    these gates — they never skip past them. That judgment is the product.
+   (In the dashboard, Tait adding an idea *is* his approval of it: ideas
+   reach the client's portal as soon as he adds them — see Dashboards.)
 
 4. **Never invent client facts.** If a skill needs a number, a story, or a
    credential that isn't in `clients/<name>/brain.md` or the mined source
@@ -284,7 +286,7 @@ don't edit the Drive doc directly and let it drift.
 The dashboards link out to these folders (deep links, not in-page upload);
 they don't duplicate their content. Each client's folder links live in
 `social_drive_folder_links` in Supabase, edited from the operator
-dashboard's All Clients → Edit.
+dashboard's Clients → Edit.
 
 ## Poppy AI
 
@@ -321,8 +323,7 @@ fully-social-os/
     template/                 client portal + editor templates, and the shared
                                shell.css/shell.js/auth.js that build.py inlines
                                into every page
-    operator/                 the operator dashboard template + news.json /
-                               agency-resources.json (agency-wide, not per-client)
+    operator/                 the operator dashboard template
     dist/                     BUILD OUTPUT ONLY, gitignored — what build.py
                                writes and what Vercel deploys. Never hand-edited.
   supabase/
@@ -348,14 +349,16 @@ a browser's localStorage. There is no status report or copy-paste relay.
 
 Who can write what (`supabase/migrations/003_social_videos_write_path.sql`):
 
-- **Operators** — full direct read/write on every `social_` table. Gate 1
-  (approve a concept) goes through `social_operator_approve_concept` so it's
-  stamped with who approved it.
+- **Operators** — full direct read/write on every `social_` table. New
+  ideas are inserted with gate 1 already stamped (`concept_approved_by/at`),
+  so the client sees them at once. Re-sending an idea the client sent back
+  goes through `social_operator_approve_concept`.
 - **Clients** — no direct writes. Only `social_client_video_action(video,
   action, note)`, which checks the move against the transition table in 003:
-  approve_concept, request_concept_changes (clears gate 1 — the concept goes
-  back to the owner), reject, mark_filmed, mark_ready_to_edit (self-serve
-  only), approve_final, request_revisions.
+  approve_concept, request_concept_changes (clears gate 1 — the idea goes
+  back to the owner), mark_filmed, mark_ready_to_edit (self-serve only),
+  approve_final, request_revisions. The database still allows `reject`, but
+  no page shows it (v1 is approve or add suggestions).
 - **Editors** — no direct writes. Only `social_editor_mark_delivered(video,
   final_cut_url)`. The editor dashboard doesn't send a link: editors upload
   into the client's Final edits folder, naming the file after the video, and
@@ -396,64 +399,67 @@ Site URL. Not fixed yet.
 ## Dashboards
 
 Three shared, static pages. They contain no client data — everything is
-fetched after login.
+fetched after login. Version 1 (2026-09-24) is deliberately the simplest
+flow that works end to end; everything else was removed so it can be added
+back one piece at a time:
+
+1. Tait plans 30 days of ideas with Claude and pastes them in ("📋 Add
+   ideas with Claude"). They fill the content calendar and show in the
+   client's portal immediately.
+2. The client approves each idea or adds suggestions. Suggestions send the
+   idea back to Tait, who edits it and sends it again.
+3. Whoever films: the client uploads to the raw footage folder and taps
+   "Uploaded footage"; for clients Tait films for ("I film" = concierge),
+   ideas skip client approval and start at "To film" on Tait's side.
+4. Tait picks an editor and sends it. The editor downloads the raw footage,
+   edits from the instructions, uploads to the finished video folder named
+   after the video, and taps "Finished — send to operator".
+5. Tait watches it: "Revisions needed" (note back to the editor) or
+   "Approve & add caption" (caption, platforms, post date — required
+   caption), which sends it to the client.
+6. The client approves it for posting (or requests changes, which goes back
+   to the editor).
+7. Ready to Post lists it by post date with the caption and finished video;
+   whoever posts marks it posted. Posting stays manual (principle 6).
 
 ### Operator dashboard — `/` → `/operator/dashboard.html`
 
-Nav: **Dashboard** (overdue, waiting-on-me counts, clients low on content)
-→ **All Clients** (add/edit clients, status, plan window, Drive links) →
-**Content Review** (in pipeline order: concepts awaiting gate 1, with
-"Approve all"; ready for an editor, with an editor picker; edits awaiting
-gate 2; plus waiting-on-client and with-editor for visibility) →
-**Schedule** (every video with inline date editing, "+ New video",
-"📋 Bulk add concepts") → **Content Calendar** (🎥 film and 📣 post dates,
-month navigation) → **Ready to Post** (caption with copy button, "Mark
-posted").
+Nav: **To Do** (ideas sent back with suggestions; ready for an editor;
+finished edits to review; waiting on the client; with an editor) →
+**Content Calendar** (every video on its post date, plus "Add ideas with
+Claude" and "+ New idea") → **Ready to Post** → **Clients** (name, portal
+address, who films, raw footage folder, finished video folder) → **Editor
+portal ↗**. A client filter across the top narrows every page.
 
-Click any video for its record; "Edit" opens the full form — title,
-platforms, status, dates, editor, overview, hook, script, filming
-instructions, caption, note, and the editor brief. Entering a post date
-suggests due-to-edit 7 days earlier; it never overwrites a typed date.
-
-**Bulk add** is how a month of content gets in: plan it with Claude, click
-"Copy the prompt to give Claude", paste Claude's JSON back. Every concept
-lands as `concept_pending`, invisible to the client until approved.
-
-Competitor Tracker, Analytics, and News Consolidator are off the nav —
-future builds, to be rebuilt against Supabase (the old config.json versions
-are in git history).
+Click any video for its card; "Edit" opens the full form (any status, the
+dates, editor, the idea fields, caption, note, and one "Editing
+instructions" field stored as `editor_brief.instructions` — older videos'
+separate brief fields are folded into it for display). Entering a post date
+suggests edit-by 7 days earlier.
 
 ### Client portal — `/clients/<slug>`
 
-One shared file; the slug comes from the URL (`vercel.json` also rewrites
-the older `/clients/<slug>/portal.html`). The client sees: what's waiting
-on them, concepts to approve (with filming instructions), what to film with
-a "Drop footage here" link to their Drive footage folder, what's in
-progress, finished edits for final approval, and a calendar of film and
-post dates, organized into four tabs: Needs your approval (new ideas and
-finished videos), To film, In progress, Ready & posted. "I've uploaded my
-footage" is one tap (it runs mark_filmed then mark_ready_to_edit). Every
-button calls `social_client_video_action`. Concierge
-clients only see the final-approval side. An operator opening a portal sees
-exactly what the client sees, minus the client's buttons, plus a banner.
-Analytics is off the nav until there's live data. News only shows when
-`news.json` has items for that client.
+One shared file; the slug comes from the URL. Two pages: **My Videos**
+(tabs: Ideas to approve, To film, Finished videos to approve — clients Tait
+films for only get the last) and **Content Calendar** (post dates, plus 🎥
+film dates for clients who film). Every client button calls
+`social_client_video_action`. An operator opening a portal sees exactly
+what the client sees, can click the client's buttons and ✏️ Edit, and it's
+logged as the operator.
 
 ### Editor dashboard — `/editor/dashboard.html`
 
-An editor sees only videos assigned to them at `with_editor` or later
-(RLS): the brief, the footage / upload / brand-voice links, a due-date
-calendar, "Finished — send for review" (asks for the Drive link to the
-finished video, shown to the owner and client as "▶ Watch"), and a history
-of what they've delivered. An
-operator sees every editor's queue with a filter.
+**To Edit** (videos currently with them: instructions, raw footage and
+finished video folder links, edit-by date, any revision note) and
+**Calendar** (edit-by dates). An operator sees every editor's queue with a
+filter, and can click Finished for them.
 
 ## Adding a client
 
-Operator dashboard → All Clients → "+ New client" (name, slug,
-self-serve/concierge, plan window). The portal is live immediately. Once
-the real Drive folder exists (created by hand — this repo never creates
-Drive folders), add its links with "Edit". Giving the client a login
+Operator dashboard → Clients → "+ New client" (name, portal address, who
+films, and the raw footage + finished video Drive folder links — the folders
+are created by hand; this repo never creates Drive folders). The portal is
+live immediately. Giving the client a login
 means creating their Supabase Auth user and a `social_client_users` row —
 blocked on the CRM fix above.
 
@@ -476,11 +482,10 @@ Supabase Auth user — so a video can't go to an editor until one exists.
 ## Build & deploy
 
 `python3 dashboards/build.py` inlines `shell.css`/`shell.js`/`auth.js`
-into each template and writes `dashboards/dist/` (gitignored). Only
-agency-wide content (`news.json`, `agency-resources.json`) is baked in —
-never client data, because `dist/` is served publicly and the login gate
-only runs in the browser. Rebuild after changing templates or those two
-JSON files; adding clients or videos never needs a rebuild.
+into each template and writes `dashboards/dist/` (gitignored). No client
+data is ever baked in, because `dist/` is served publicly and the login
+gate only runs in the browser. Rebuild after changing templates; adding
+clients or videos never needs a rebuild.
 
 `vercel.json`: `buildCommand` runs `build.py`, then writes
 `dashboards/dist/supabase/config.js` from the `SUPABASE_URL` /
@@ -514,8 +519,8 @@ As of 2026-09-23:
 | Blueprint concept | Current state |
 |---|---|
 | Customer Data / taste document / voice / interview questions | ✅ Skills — `customer-data-doc`, `positioning-doc`, `voice-doc`, `interview-questions-doc` (not in this repo). |
-| AI-assisted content calendar | ✅ Plan with Claude, then "Bulk add concepts" on the operator dashboard. |
-| Concept approval: owner (gate 1), then client approve / rewrite / reject | ✅ Live in Supabase, enforced by RLS + functions. |
+| AI-assisted content calendar | ✅ Plan with Claude, then "Add ideas with Claude" on the operator dashboard. |
+| Concept approval: owner (gate 1), then client approve / rewrite / reject | ✅ Tait adding an idea is gate 1; the client approves or adds suggestions (reject is off the page in v1). |
 | Filming instructions per video, client sees what to film | ✅ `filming_instructions`, shown on the client's concept and to-film cards. |
 | Footage upload per content card | 🧩 One shared Footage Uploads Drive folder per client, deep-linked from each to-film card. Not per-video upload. |
 | Editor dashboard (brief, footage, brand voice, deliver) | ✅ Live, scoped per editor by RLS. |
@@ -544,7 +549,7 @@ As of 2026-09-23:
 | 0 | Client creation — operator adds a client, gets a working (empty) portal instantly | ✅ Live |
 | 1 | Onboarding survey — platform access (delegated, never passwords), brand voice, initial ideas, existing assets | ❌ Not built |
 | 2 | Survey data lands on the client's row in Supabase | ❌ Not built |
-| 3 | Operator generates content ideas, AI-assisted | 🧩 Claude + Bulk add; not in-app |
+| 3 | Operator generates content ideas, AI-assisted | 🧩 Claude + "Add ideas with Claude"; not in-app |
 | 4 | Operator schedules content and writes filming instructions | ✅ Live |
 | 5 | Client films and uploads (self-serve) or Tait films (concierge) | ✅ Status live; upload is a Drive deep link |
 | 6 | Editor edits and submits for review | ✅ Live |

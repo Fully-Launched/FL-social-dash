@@ -32,7 +32,7 @@ chk("popup links to that editor's portal", !!link);
 // Editor portal as operator, opened on Morgan's work.
 const url = "https://fl.test/editor/dashboard.html?editor=" + ED;
 const p = await openPage("editor/dashboard.html", OP, url);
-chk("warns when the client has no Final edits folder", p.d.getElementById("queueList").textContent.includes("no Final edits folder"));
+chk("warns when the client has no Final edits folder", p.d.getElementById("queueList").textContent.includes("no finished video folder"));
 chk("operator banner shows", p.d.getElementById("operatorBanner").textContent.includes("as the operator"));
 const cards = () => Array.from(p.d.querySelectorAll("#queueList .card"));
 const titles = () => cards().map(c => c.querySelector("[data-open]").textContent);
@@ -41,7 +41,7 @@ const fin = t => cards().find(c => c.querySelector("[data-open]").textContent ==
 fin("Morgan edits this").click(); await settle();
 let r = (await db.query("select status, final_cut_url from social_videos where title='Morgan edits this'")).rows[0];
 chk("operator finished Morgan's video", r.status === "in_review" && r.final_cut_url === null, r);
-chk("no link asked for", !p.ui.promptsShown.length && p.ui.confirms.some(m => m.includes("Final edits folder")), p.ui.confirms);
+chk("no link asked for", !p.ui.promptsShown.length && p.ui.confirms.some(m => m.includes("finished video folder")), p.ui.confirms);
 
 // All editors, then Tait's own.
 Array.from(p.d.querySelectorAll("#editorChips .chip")).find(c => c.textContent === "All editors").click(); await settle();
