@@ -160,7 +160,26 @@ function renderAll() {
 }
 
 // ---------- actions ----------
-function actionsFor(v) { return IS_OPERATOR ? [] : videoActionsFor(v, "client", CLIENT.client_system); }
+// An operator sees the client's own buttons too, for clients who'd rather
+// tell Tait than click. Those run as the operator's direct update (see
+// runAsOperator), so the audit log never shows them as the client's action.
+function actionsFor(v) { return videoActionsFor(v, "client", CLIENT.client_system); }
+
+// The operator's version of a client action: same move as the transition
+// table in 003, written directly (operators have full access). The status
+// filter stops a stale page from moving a video that has since moved on.
+async function runAsOperator(actionKey, videoId, note) {
+  const a = VIDEO_ACTIONS[actionKey];
+  const row = { status: a.to };
+  if (note) row.note = note;
+  // Asking for changes sends the concept back to the owner's queue, like
+  // the client's request_concept_changes does.
+  if (actionKey === "request_concept_changes") { row.concept_approved_by = null; row.concept_approved_at = null; }
+  const { data, error } = await sbClient.from("social_videos").update(row).eq("id", videoId).in("status", a.from).select("*");
+  if (error) return { error: error.message };
+  if (!data || !data.length) return { error: "This video has already moved on. Refresh the page." };
+  return { video: videoFromRow(data[0]) };
+}
 
 async function doAction(actionKey, videoId, btnEl) {
   const a = VIDEO_ACTIONS[actionKey];
@@ -173,10 +192,11 @@ async function doAction(actionKey, videoId, btnEl) {
     if (!note.trim()) { alert("Please add a short note so we know what to change."); return; }
   }
   if (btnEl) { btnEl.disabled = true; btnEl.textContent = "Saving…"; }
-  let r = await runVideoAction(actionKey, videoId, note);
+  const run = IS_OPERATOR ? runAsOperator : runVideoAction;
+  let r = await run(actionKey, videoId, note);
   // Uploading footage is one step for the client: filmed, then straight on
   // to editing.
-  if (!r.error && actionKey === "mark_filmed") r = await runVideoAction("mark_ready_to_edit", videoId);
+  if (!r.error && actionKey === "mark_filmed") r = await run("mark_ready_to_edit", videoId);
   if (r.error) {
     alert("That didn't save: " + r.error);
     if (btnEl) { btnEl.disabled = false; btnEl.textContent = a.label; }
@@ -221,6 +241,7 @@ function videoCard(video) {
     ${video.note ? `<div class="meta" style="margin-top:8px">Note: ${escapeHtml(video.note)}</div>` : ""}
     ${showFootage ? `<div class="meta" style="margin-top:10px">Name your files starting with <b>${escapeHtml(video.title || "the video title")}</b> so the editor can find them.</div>` : ""}
     <div class="actions" style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+      ${IS_OPERATOR ? `<button onclick="openPortalEditForm('${video.id}')">✏️ Edit</button>` : ""}
       ${showWatch ? `<a class="btn primary" href="${escapeHtml(video.finalCutUrl)}" target="_blank" rel="noopener">▶ Watch the video</a>` : ""}
       ${showFootage ? `<a class="btn" href="${escapeHtml(DRIVE_FOLDERS.footageUploads)}" target="_blank" rel="noopener">📁 Upload footage</a>` : ""}
     </div>
@@ -236,22 +257,63 @@ function openClientVideoModal(videoId) {
   if (!video) return;
   const keys = actionsFor(video);
   openVideoModal({ displayName: CLIENT.name, driveFolders: DRIVE_FOLDERS }, video,
-    { actionsHtml: keys.length ? " " : "", linkKeys: ["footageUploads"], hideEditorBrief: true });
+    { actionsHtml: keys.length || IS_OPERATOR ? " " : "", linkKeys: ["footageUploads"], hideEditorBrief: true });
   const box = document.querySelector("#videoModalBox .modal-actions");
-  if (box) { box.innerHTML = ""; keys.forEach(k => box.appendChild(actionButton(k, video.id))); }
+  if (box) {
+    box.innerHTML = "";
+    keys.forEach(k => box.appendChild(actionButton(k, video.id)));
+    if (IS_OPERATOR) box.insertAdjacentHTML("beforeend", `<button onclick="openPortalEditForm('${video.id}')">✏️ Edit</button>`);
+  }
+}
+
+// ---------- operator: edit a video from the portal ----------
+// The fields the client sees. The full form (editor brief, editor,
+// status) stays in the operator dashboard.
+const PORTAL_EDIT_FIELDS = [
+  ["title", "Title"], ["overview", "Overview", 2], ["hook", "Hook", 2], ["body", "What to say", 4],
+  ["filmingDirection", "How to film it", 3], ["caption", "Caption", 3], ["note", "Note", 2],
+];
+function openPortalEditForm(videoId) {
+  const v = VIDEOS.find(x => x.id === videoId);
+  if (!v) return;
+  const lbl = t => `<label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin:0 0 3px">${escapeHtml(t)}</label>`;
+  const field = ([key, label, rows]) => lbl(label) + (rows
+    ? `<textarea data-f="${key}" rows="${rows}" style="width:100%;margin-bottom:10px">${escapeHtml(v[key] || "")}</textarea>`
+    : `<input type="text" data-f="${key}" value="${escapeHtml(v[key] || "")}" style="width:100%;margin-bottom:10px">`);
+  const date = (key, label) => `<div>${lbl(label)}<input type="date" data-f="${key}" value="${escapeHtml(v[key] || "")}" style="width:100%;margin-bottom:10px"></div>`;
+  const box = openModal(`<h2>Edit video</h2>
+    ${PORTAL_EDIT_FIELDS.map(field).join("")}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
+      ${date("dueToFilm", "Film by")}${date("dueToEdit", "Edit by")}${date("postDate", "Post date")}
+    </div>
+    <div class="modal-actions"><button class="primary" id="portalEditSave">Save</button><button onclick="closeVideoModal()">Cancel</button></div>`);
+  box.querySelector("#portalEditSave").onclick = async e => {
+    const patch = {};
+    box.querySelectorAll("[data-f]").forEach(el => { patch[el.dataset.f] = el.value.trim(); });
+    if (!patch.title) { alert("Give it a title."); return; }
+    e.target.disabled = true; e.target.textContent = "Saving…";
+    const { data, error } = await sbClient.from("social_videos").update(videoFieldsToRow(patch)).eq("id", videoId).select("id");
+    if (error || !data || !data.length) {
+      alert("Couldn't save: " + (error ? error.message : "that video wasn't found."));
+      e.target.disabled = false; e.target.textContent = "Save";
+      return;
+    }
+    closeVideoModal();
+    await loadVideos();
+  };
 }
 
 // ---------- pages ----------
 function renderOperatorBanner() {
   document.getElementById("operatorBanner").innerHTML = IS_OPERATOR ? `
     <div class="card" style="margin-bottom:14px"><b>You're viewing ${escapeHtml(CLIENT.name)}'s portal as the operator.</b>
-      <div class="meta">This is exactly what the client sees, minus their approve/film buttons (those only work from the client's own login).
-      Make changes in the <a href="/operator/dashboard.html" style="color:inherit;text-decoration:underline">operator dashboard</a>.
+      <div class="meta">This is exactly what the client sees. You can click their buttons and edit videos for them. It's recorded as you, not the client.
+      The full editor (editor brief, assigned editor, any status) is in the <a href="/operator/dashboard.html" style="color:inherit;text-decoration:underline">operator dashboard</a>.
       ${HIDDEN_CONCEPTS ? `<br>${HIDDEN_CONCEPTS} concept(s) are hidden from the client until you approve them there.` : ""}</div></div>` : "";
 }
 
 function renderHome() {
-  const todo = VIDEOS.filter(v => actionsFor(v).length || (IS_OPERATOR && videoActionsFor(v, "client", CLIENT.client_system).length));
+  const todo = VIDEOS.filter(v => actionsFor(v).length);
   document.getElementById("homeStats").innerHTML = tabsForClient().map(t =>
     `<div class="stat-card video-card" onclick="openTab('${t.key}')"><div class="label">${t.label}</div><div class="value">${videosInTab(t.key).length}</div></div>`).join("");
   document.getElementById("homeTodo").innerHTML = todo.length
