@@ -131,9 +131,19 @@ chk(`In progress shows ${kept.length}`, $(cl, "#videoTabs").textContent.includes
 op = track(await OP());
 chk(`${kept.length} ready for an editor`, $$(op, "#toEditorList .row").length === kept.length);
 for (const i of kept) {
-  const id = await idOf(title(i));
-  $(op, "#assign_" + id).value = U.ed;
-  await click(btn(opRow(op, "#toEditorList", title(i)), "Send to editor"), "send " + i);
+  // The first one goes through the popup, which sits over the video's own
+  // row: each has a picker, and the popup's must be the one that counts.
+  if (i === kept[0]) {
+    await click(opRow(op, "#toEditorList", title(i)).querySelector("b.video-card"), "open popup " + i);
+    const box = $(op, "#videoModalBox .modal-actions");
+    box.querySelector("select").value = U.ed;
+    await click(btn(box, "Send to editor"), "send from popup " + i);
+    chk("popup picker sends to the editor", !op.ui.alerts.length, op.ui.alerts);
+    continue;
+  }
+  const row = opRow(op, "#toEditorList", title(i));
+  row.querySelector("select").value = U.ed;
+  await click(btn(row, "Send to editor"), "send " + i);
 }
 chk("all with editor", (await db.query("select count(*)::int n from social_videos where status='with_editor' and editor_id=$1", [U.ed])).rows[0].n === kept.length);
 
