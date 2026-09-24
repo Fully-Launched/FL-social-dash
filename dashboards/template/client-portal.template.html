@@ -166,59 +166,57 @@ function fieldRow(label, value) {
   return value ? `<div style="margin:10px 0 4px"><b style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">${label}</b><div style="white-space:pre-wrap;font-size:0.92rem;line-height:1.5">${escapeHtml(value)}</div></div>` : "";
 }
 
-function videoCard(video) {
-  const card = document.createElement("div");
-  card.className = "card";
-  const platforms = (video.platform || []).join(" · ");
-  const isIdea = ["concept_pending", "to_film"].includes(video.status);
+// What the client sees on a video. Filming stages: hook, script, outline,
+// film-by date and how to film it. Final approval: the video and both
+// captions. Nothing else.
+function clientCardBody(video) {
+  const isIdea = ["concept_pending", "to_film", "filmed"].includes(video.status);
   const showFootage = DRIVE_FOLDERS.footageUploads && IS_SELF_SERVE && ["to_film", "filmed"].includes(video.status);
   const watch = video.status === "client_review" ? finishedVideoLink(video, DRIVE_FOLDERS) : null;
-  card.innerHTML = `
-    <div class="row" style="border:none;padding:0 0 10px">
-      <div class="left"><b class="video-card" style="display:inline-block" data-open>${escapeHtml(video.title || "(untitled)")}</b>
-      <div class="meta">${escapeHtml(platforms)} ${video.dueToFilm && isIdea && IS_SELF_SERVE ? "· film by " + escapeHtml(video.dueToFilm) : ""} ${video.postDate ? "· posts " + escapeHtml(video.postDate) : ""}</div></div>
-      ${statusBadge(video.status, STATUS_LABEL)}
-    </div>
-    ${video.overview ? `<div style="margin:10px 0 4px;color:var(--sub);font-size:0.9rem">${escapeHtml(video.overview)}</div>` : ""}
-    ${fieldRow("Hook", video.hook)}
-    ${isIdea ? fieldRow("What to say", video.body) : ""}
+  return `
+    ${isIdea && video.dueToFilm && IS_SELF_SERVE ? `<div class="meta" style="margin-bottom:6px">🎥 Film by <b>${escapeHtml(video.dueToFilm)}</b></div>` : ""}
+    ${isIdea ? fieldRow("Hook", video.hook) : ""}
+    ${isIdea ? fieldRow("Script", video.body) : ""}
+    ${isIdea ? fieldRow("Outline", video.outline) : ""}
     ${isIdea && IS_SELF_SERVE ? fieldRow("How to film it", video.filmingDirection) : ""}
     ${video.status === "client_review" ? fieldRow("On-screen caption", video.onScreenCaption) : ""}
     ${video.status === "client_review" ? fieldRow("Caption", video.caption) : ""}
-    ${video.note ? `<div class="meta" style="margin-top:8px">Note: ${escapeHtml(video.note)}</div>` : ""}
     ${showFootage ? `<div class="meta" style="margin-top:10px">Name your files starting with <b>${escapeHtml(video.title || "the video title")}</b>.</div>` : ""}
     <div class="actions" style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
       ${watch ? `<a class="btn primary" href="${escapeHtml(watch.url)}" target="_blank" rel="noopener">${video.finalCutUrl ? "▶ Watch the video" : "▶ Watch it in the finished video folder"}</a>` : ""}
       ${showFootage ? `<a class="btn" href="${escapeHtml(DRIVE_FOLDERS.footageUploads)}" target="_blank" rel="noopener">📁 Raw footage here</a>` : ""}
       ${IS_OPERATOR ? `<button onclick="openPortalEditForm('${video.id}')">✏️ Edit</button>` : ""}
-    </div>
-  `;
-  card.querySelector("[data-open]").onclick = () => openClientVideoModal(video.id);
-  const actions = card.querySelector(".actions");
+    </div>`;
+}
+function addActionButtons(root, video) {
+  const actions = root.querySelector(".actions");
   actionsFor(video).forEach(k => actions.appendChild(actionButton(k, video.id)));
+}
+
+function videoCard(video) {
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `<b class="video-card" style="display:inline-block;margin-bottom:8px" data-open>${escapeHtml(video.title || "(untitled)")}</b>` + clientCardBody(video);
+  card.querySelector("[data-open]").onclick = () => openClientVideoModal(video.id);
+  addActionButtons(card, video);
   return card;
 }
 
+// Same content as the card, for the calendar and a clicked title.
 function openClientVideoModal(videoId) {
   const video = VIDEOS.find(v => v.id === videoId);
   if (!video) return;
-  const keys = actionsFor(video);
-  openVideoModal({ displayName: CLIENT.name, driveFolders: DRIVE_FOLDERS }, video,
-    { actionsHtml: keys.length || IS_OPERATOR ? " " : "", linkKeys: IS_SELF_SERVE ? ["footageUploads"] : [], hideEditorBrief: true,
-      hideFinalCut: video.status !== "client_review" });
-  const box = document.querySelector("#videoModalBox .modal-actions");
-  if (box) {
-    box.innerHTML = "";
-    keys.forEach(k => box.appendChild(actionButton(k, video.id)));
-    if (IS_OPERATOR) box.insertAdjacentHTML("beforeend", `<button onclick="openPortalEditForm('${video.id}')">✏️ Edit</button>`);
-  }
+  const box = openModal(`<h2>${escapeHtml(video.title || "(untitled)")}</h2>
+    ${["concept_pending", "to_film", "filmed", "client_review"].includes(video.status) ? "" : `<div class="meta" style="margin-bottom:8px">${escapeHtml(STATUS_LABEL[video.status] || video.status)}${video.postDate ? " · posts " + escapeHtml(video.postDate) : ""}</div>`}
+    ${clientCardBody(video)}`);
+  addActionButtons(box, video);
 }
 
 // ---------- operator: edit a video from the portal ----------
 // The fields the client sees. The full form (editor, instructions, any
 // status) stays in the operator dashboard.
 const PORTAL_EDIT_FIELDS = [
-  ["title", "Title"], ["overview", "Overview", 2], ["hook", "Hook", 2], ["body", "What to say", 4],
+  ["title", "Title"], ["hook", "Hook", 2], ["body", "Script", 4], ["outline", "Outline (bullet points, in order)", 4],
   ["filmingDirection", "How to film it", 3], ["caption", "Caption", 3], ["note", "Note", 2],
 ];
 function openPortalEditForm(videoId) {

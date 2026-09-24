@@ -108,7 +108,7 @@ async function loadLiveData() {
     const f = folderByClient[c.id] || {};
     return {
       id: c.id, slug: c.slug, name: c.name, displayName: c.name, clientSystem: c.client_system,
-      driveFolders: { footageUploads: f.footage_uploads, finalEdits: f.final_edits },
+      driveFolders: { footageUploads: f.footage_uploads, finalEdits: f.final_edits, brandVoice: f.brand_voice },
     };
   });
   CLIENT_BY_ID = {};
@@ -348,9 +348,9 @@ function openVideoForm(id, presetClientId) {
       <div>${lbl("Editor")}<select data-f="editorId" style="width:100%;margin-bottom:10px">${editorOpts}</select></div>
     </div>
     <h3 style="font-size:0.85rem;margin:14px 0 8px;color:var(--sub)">The idea (the client sees this)</h3>
-    ${textField("overview", "Overview (one or two sentences)", v.overview, 2)}
     ${textField("hook", "Hook", v.hook, 2)}
-    ${textField("body", "What to say", v.body, 4)}
+    ${textField("body", "Script", v.body, 4)}
+    ${textField("outline", "Outline (bullet points of what to cover, in order)", v.outline, 4)}
     ${textField("filmingDirection", "How to film it", v.filmingDirection, 3)}
     ${textField("onScreenCaption", "On-screen caption", v.onScreenCaption, 2)}
     ${textField("caption", "Caption", v.caption, 3)}
@@ -418,9 +418,9 @@ const BULK_PROMPT = `Turn the content plan we just made into a JSON array I can 
 
 - "title": short working title
 - "platform": array, e.g. ["instagram", "tiktok"]
-- "overview": one or two sentences on what the video is
 - "hook": the opening line
-- "body": script or talking points
+- "body": the full script
+- "outline": a bullet-point list (one string, one "- " line per point) of everything the video covers, in order — for when the client would rather talk through points than read the script
 - "filmingDirection": plain-language instructions for the client on how to film it
 - "editorInstructions": how the editor should cut it
 - "caption": the post caption
@@ -456,7 +456,8 @@ function parseBulk(text) {
     const platform = Array.isArray(o.platform) ? o.platform : String(o.platform || "").split(",");
     rows.push({
       title, platform: platform.map(p => String(p).trim().toLowerCase()).filter(Boolean),
-      overview: o.overview || null, hook: o.hook || null, body: o.body || o.script || null,
+      overview: o.overview || null, outline: Array.isArray(o.outline) ? o.outline.map(p => "- " + p).join("\n") : (o.outline || null),
+      hook: o.hook || null, body: o.body || o.script || null,
       filmingDirection: o.filmingDirection || o.filmingInstructions || o.filming_instructions || null,
       editorBrief: { instructions: o.editorInstructions || o.editor_instructions || null },
       caption: o.caption || null, ...dates,
@@ -599,7 +600,7 @@ function renderAllClients() {
   if (!CLIENTS.length) { el.innerHTML = '<div class="empty">No clients yet — add one above.</div>'; return; }
   el.innerHTML = CLIENTS.map(c => {
     const f = c.driveFolders;
-    const missing = [!f.footageUploads && "raw footage folder", !f.finalEdits && "finished video folder"].filter(Boolean);
+    const missing = [!f.footageUploads && "raw footage folder", !f.finalEdits && "finished video folder", !f.brandVoice && "brand guidelines"].filter(Boolean);
     const count = VIDEOS.filter(x => x.client.id === c.id).length;
     return `<div class="row"><div class="left"><b>${escapeHtml(c.name)}</b>
       <div class="meta">/clients/${escapeHtml(c.slug)} · ${escapeHtml(WHO_FILMS[c.clientSystem] || c.clientSystem)} · ${count} video(s)</div>
@@ -633,6 +634,7 @@ function openClientPanel(clientId) {
     </select>
     ${lbl("Raw footage folder (Google Drive link)")}<input type="text" id="cpFootage" value="${escapeHtml(f.footageUploads || "")}" style="width:100%;margin-bottom:10px">
     ${lbl("Finished video folder (Google Drive link)")}<input type="text" id="cpFinal" value="${escapeHtml(f.finalEdits || "")}" style="width:100%;margin-bottom:10px">
+    ${lbl("Brand guidelines (Google Doc link — the editor sees it on every video)")}<input type="text" id="cpBrand" value="${escapeHtml(f.brandVoice || "")}" style="width:100%;margin-bottom:10px">
     <div class="auth-error" id="cpError"></div>
     <div style="display:flex;gap:8px">
       <button class="primary" id="cpSave">${clientId ? "Save changes" : "Create client"}</button>
@@ -668,6 +670,7 @@ function openClientPanel(clientId) {
       client_id: id,
       footage_uploads: document.getElementById("cpFootage").value.trim() || null,
       final_edits: document.getElementById("cpFinal").value.trim() || null,
+      brand_voice: document.getElementById("cpBrand").value.trim() || null,
     }, { onConflict: "client_id" });
     e.target.disabled = false;
     if (folderRes.error) { errEl.textContent = folderRes.error.message; return; }

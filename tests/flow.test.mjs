@@ -30,9 +30,9 @@ await db.exec(`
     ('${FL}','Fully Launched','test-fully-launched','self-serve'),
     ('${DAD}','Dad Co','dad-co','concierge');
   insert into social_client_users (id,client_id,email) values ('${U.cl}','${FL}','fl@x'),('${U.dad}','${DAD}','dad@x');
-  insert into social_drive_folder_links (client_id, footage_uploads, final_edits) values
-    ('${FL}','https://drive/fl-footage','https://drive/fl-final'),
-    ('${DAD}','https://drive/dad-footage','https://drive/dad-final');
+  insert into social_drive_folder_links (client_id, footage_uploads, final_edits, brand_voice) values
+    ('${FL}','https://drive/fl-footage','https://drive/fl-final','https://docs/fl-brand'),
+    ('${DAD}','https://drive/dad-footage','https://drive/dad-final',null);
 `);
 
 const BASE = "https://fl.test";
@@ -46,7 +46,7 @@ const day = n => iso(new Date(Date.UTC(2026, 9, 1 + n)));      // Oct 1 + n
 const title = i => `Post ${String(i + 1).padStart(2, "0")} — idea ${i + 1}`;
 const plan = Array.from({ length: 30 }, (_, i) => ({
   title: title(i), platform: ["instagram", "tiktok"], hook: `Hook ${i + 1}`, overview: `Overview ${i + 1}`,
-  body: `Talking points ${i + 1}`, filmingDirection: `Film it like this: ${i + 1}`, editorInstructions: `Cut it like this: ${i + 1}`,
+  body: `Talking points ${i + 1}`, outline: [`Point A${i + 1}`, `Point B${i + 1}`], filmingDirection: `Film it like this: ${i + 1}`, editorInstructions: `Cut it like this: ${i + 1}`,
   dueToFilm: day(i - 10), dueToEdit: day(i - 7), postDate: day(i),
 }));
 
@@ -88,7 +88,8 @@ let cl = track(await CL());
 chk("client sees 30 ideas to approve", $(cl, "#videoTabs").textContent.includes("Ideas to approve (30)"), $(cl, "#videoTabs").textContent);
 chk("client has only My Videos + Calendar", $$(cl, ".nav-item").map(n => n.dataset.view).join() === "videos,calendar");
 const c0 = portalCard(cl, "#listIdeas", title(0));
-chk("idea card shows what to say + how to film", c0 && c0.textContent.includes("Talking points 1") && c0.textContent.includes("Film it like this: 1"));
+chk("idea card: hook, script, outline, film-by, how to film", c0 && ["Hook 1", "Talking points 1", "- Point A1\n- Point B1", "Film by " + day(-10), "Film it like this: 1"].every(t => c0.textContent.includes(t)), c0 && c0.textContent);
+chk("idea card: nothing else (no platforms, post date, overview)", c0 && !/instagram|posts |Overview 1/.test(c0.textContent));
 chk("idea card has only Approve idea + Add suggestions", c0 && Array.from(c0.querySelectorAll("button")).map(b => b.textContent).join("|") === "Approve idea|Add suggestions");
 chk("client never sees editing instructions", !cl.d.body.textContent.includes("Cut it like this"));
 for (const i of idx) {
@@ -161,6 +162,8 @@ const e0 = edCard(ed, title(0));
 chk("editor card: raw footage, finished folder, instructions, edit-by date",
   e0.querySelector('a[href="https://drive/fl-footage"]') && e0.querySelector('a[href="https://drive/fl-final"]') && e0.textContent.includes("Cut it like this: 1") && e0.textContent.includes(day(-7)));
 chk("editor told to name the file after the video", e0.textContent.includes("name it " + title(0)));
+chk("editor sees the client's brand guidelines", Array.from(e0.querySelectorAll('a[href="https://docs/fl-brand"]')).some(a => a.textContent.includes("Brand guidelines")));
+chk("editor card: no hook, script or post date", !/Hook 1|Talking points 1|posts /.test(e0.textContent));
 await click($$(ed, ".nav-item").find(n => n.dataset.view === "calendar"), "editor calendar");
 chk("editor calendar has the edit dates", $$(ed, "#calGrid .cal-chip").length > 0);
 if (V.early) {

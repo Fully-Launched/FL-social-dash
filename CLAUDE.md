@@ -331,7 +331,8 @@ fully-social-os/
                                003 (write path: action functions, audit log,
                                active-editor RLS), 004 (final_cut_url — optional
                                link to one exact finished file), 005
-                               (on_screen_caption)
+                               (on_screen_caption — added by whoever posts, in the
+                               app, not by the editor; outline)
     config.example.js          template for supabase/config.js (gitignored —
                                the real Supabase URL/anon key, local dev only)
 ```
@@ -445,15 +446,20 @@ suggests edit-by 7 days earlier.
 One shared file; the slug comes from the URL. Two pages: **My Videos**
 (tabs: Ideas to approve, To film, Finished videos to approve — clients Tait
 films for only get the last) and **Content Calendar** (post dates, plus 🎥
-film dates for clients who film). Every client button calls
+film dates for clients who film). A video card shows the client only
+what they need: while filming — hook, script, outline (bullet points of
+the script, in order), film-by date, how to film it, and the raw footage
+link; at final approval — the video and both captions. Every client button calls
 `social_client_video_action`. An operator opening a portal sees exactly
 what the client sees, can click the client's buttons and ✏️ Edit, and it's
 logged as the operator.
 
 ### Editor dashboard — `/editor/dashboard.html`
 
-**To Edit** (videos currently with them: instructions, raw footage and
-finished video folder links, edit-by date, any revision note) and
+**To Edit** (videos currently with them: edit-by date, revisions if it came
+back, editing instructions, the client's brand guidelines Google Doc —
+`social_drive_folder_links.brand_voice`, set on the Clients page — and the
+raw footage and finished video folder links; nothing else) and
 **Calendar** (edit-by dates). An operator sees every editor's queue with a
 filter, and can click Finished for them.
 
