@@ -44,7 +44,7 @@ function authRenderForm() {
   gate.dataset.rendered = "1";
   gate.innerHTML = `
     <div class="auth-card">
-      <div class="brand" style="margin-bottom:18px"><span class="dot"></span> Fully Social OS</div>
+      <div class="brand" style="margin-bottom:18px;align-items:center"><img src="/assets/logo-white.png" alt="Fully Launched" style="width:190px"></div>
       <form id="authForm">
         <label>Email<input type="email" id="authEmail" required autocomplete="email" /></label>
         <label>Password<input type="password" id="authPassword" required autocomplete="current-password" /></label>

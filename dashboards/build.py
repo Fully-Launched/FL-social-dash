@@ -15,6 +15,7 @@ clients or videos never needs a rebuild.
 
 Usage: python3 dashboards/build.py
 """
+import shutil
 from pathlib import Path
 
 ROOT = Path(__file__).parent
@@ -50,6 +51,12 @@ def main():
     write("operator/dashboard.html", inline_shell((OPERATOR_DIR / "dashboard.template.html").read_text()))
 
     write("editor/dashboard.html", inline_shell((TEMPLATE_DIR / "editor-dashboard.template.html").read_text()))
+
+    # The Fully Launched logo (white, from fullylaunched.com), shown in each
+    # page's sidebar and on the login screen.
+    (DIST_DIR / "assets").mkdir(parents=True, exist_ok=True)
+    shutil.copy(TEMPLATE_DIR / "logo-white.png", DIST_DIR / "assets" / "logo-white.png")
+    print("built dashboards/dist/assets/logo-white.png")
 
 
 if __name__ == "__main__":
