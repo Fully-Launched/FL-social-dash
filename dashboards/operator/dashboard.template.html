@@ -22,6 +22,7 @@
   <div class="nav-item" data-view="schedule"><span class="ic">🗓️</span> Schedule</div>
   <div class="nav-item" data-view="calendar"><span class="ic">📅</span> Content Calendar</div>
   <div class="nav-item" data-view="post"><span class="ic">✅</span> Ready to Post</div>
+  <a class="nav-item" href="/editor/dashboard.html" target="_blank" rel="noopener" style="text-decoration:none"><span class="ic">🎞️</span> Editor portal ↗</a>
   <!-- Competitor Tracker, Analytics, and News Consolidator are future
        builds — pulled from the nav for now. Their old config.json-driven
        markup/JS is in git history (before social_videos became the single
@@ -269,7 +270,8 @@ function openOperatorVideoModal(id) {
   const x = findVideo(id);
   if (!x) return;
   const actions = operatorActionsHtml(x) + smallBtn("✏️ Edit", `closeVideoModal();openVideoForm('${id}')`) +
-    `<a class="btn" style="font-size:0.78rem;padding:5px 10px" href="/clients/${encodeURIComponent(x.client.slug)}" target="_blank" rel="noopener">Open portal</a>`;
+    `<a class="btn" style="font-size:0.78rem;padding:5px 10px" href="/clients/${encodeURIComponent(x.client.slug)}" target="_blank" rel="noopener">Open portal</a>` +
+    (x.video.editorId ? `<a class="btn" style="font-size:0.78rem;padding:5px 10px" href="/editor/dashboard.html?editor=${encodeURIComponent(x.video.editorId)}" target="_blank" rel="noopener">Open editor portal</a>` : "");
   openVideoModal(x.client, x.video, { actionsHtml: actions });
   if (x.client.clientSystem === "self-serve" && x.video.status === "concept_pending") {
     const meta = document.querySelector("#videoModalBox .modal-meta");
