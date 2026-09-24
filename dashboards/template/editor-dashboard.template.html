@@ -72,7 +72,7 @@ async function loadData() {
     ? `<div class="card"><b style="color:var(--red)">Couldn't load everything:</b> <span class="meta">${errors.map(escapeHtml).join("<br>")}</span></div>` : "";
 
   const folders = {};
-  (foldersRes.data || []).forEach(f => { folders[f.client_id] = { footageUploads: f.footage_uploads, finalEdits: f.final_edits }; });
+  (foldersRes.data || []).forEach(f => { folders[f.client_id] = { footageUploads: f.footage_uploads, finalEdits: f.final_edits, brandVoice: f.brand_voice }; });
   const clients = {};
   (clientsRes.data || []).forEach(c => { clients[c.id] = { id: c.id, name: c.name, displayName: c.name, driveFolders: folders[c.id] || {} }; });
   EDITOR_BY_ID = {};
@@ -154,19 +154,10 @@ function renderQueue() {
     card.innerHTML = `
       <div class="row" style="border:none;padding:0 0 10px">
         <div class="left"><b class="video-card" style="display:inline-block" data-open>${escapeHtml(video.title || "(untitled)")}</b>
-        <div class="meta">${escapeHtml(client.name)}${ROLE === "operator" && video.assignedEditor ? " · " + escapeHtml(video.assignedEditor) : ""}${video.postDate ? " · posts " + escapeHtml(video.postDate) : ""}</div></div>
+        <div class="meta">${escapeHtml(client.name)}${ROLE === "operator" && video.assignedEditor ? " · " + escapeHtml(video.assignedEditor) : ""}</div></div>
         ${video.dueToEdit ? `<span class="badge" style="background:${overdue ? "rgba(239,68,68,0.15)" : "var(--card2)"};color:${overdue ? "var(--red)" : "var(--sub)"}">${overdue ? "Overdue — " : "Edit by "}${escapeHtml(video.dueToEdit)}</span>` : ""}
       </div>
-      ${revisionsBox(video)}
-      ${fieldBlock("Editing instructions", editorInstructions(video))}
-      ${fieldBlock("Hook", video.hook)}
-      <div class="meta" style="margin-top:10px">${f.finalEdits
-        ? `Upload the finished video to the finished video folder and name it <b>${escapeHtml(video.title || "after the video")}</b>.`
-        : `<b style="color:var(--red)">This client has no finished video folder yet.</b> Ask the operator to add one before you finish this.`}</div>
-      <div class="actions" style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
-        ${f.footageUploads ? `<a class="btn" href="${escapeHtml(f.footageUploads)}" target="_blank" rel="noopener">📁 Raw footage</a>` : ""}
-        ${f.finalEdits ? `<a class="btn" href="${escapeHtml(f.finalEdits)}" target="_blank" rel="noopener">⬆️ Finished video folder</a>` : ""}
-      </div>
+      ${editorCardBody(client, video)}
     `;
     card.querySelector(".actions").appendChild(finishButton(video.id));
     card.querySelector("[data-open]").onclick = () => openEditorVideoModal(video.id);
@@ -174,12 +165,32 @@ function renderQueue() {
   });
 }
 
+// What the editor sees on a video: revisions (if it came back), the
+// instructions, the client's brand guidelines, and where to download and
+// upload. The edit-by date is in the card's header.
+function editorCardBody(client, video) {
+  const f = client.driveFolders || {};
+  return `
+    ${revisionsBox(video)}
+    ${fieldBlock("Editing instructions", editorInstructions(video))}
+    <div class="meta" style="margin-top:10px">${f.finalEdits
+      ? `Upload the finished video to the finished video folder and name it <b>${escapeHtml(video.title || "after the video")}</b>.`
+      : `<b style="color:var(--red)">This client has no finished video folder yet.</b> Ask the operator to add one before you finish this.`}</div>
+    <div class="actions" style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+      ${f.brandVoice ? `<a class="btn" href="${escapeHtml(f.brandVoice)}" target="_blank" rel="noopener">📘 Brand guidelines</a>` : ""}
+      ${f.footageUploads ? `<a class="btn" href="${escapeHtml(f.footageUploads)}" target="_blank" rel="noopener">📁 Raw footage</a>` : ""}
+      ${f.finalEdits ? `<a class="btn" href="${escapeHtml(f.finalEdits)}" target="_blank" rel="noopener">⬆️ Finished video folder</a>` : ""}
+    </div>`;
+}
+
+// Same content as the card, for the calendar and a clicked title.
 function openEditorVideoModal(videoId) {
   const x = VIDEOS.find(y => y.video.id === videoId);
   if (!x) return;
-  openVideoModal(x.client, x.video, { actionsHtml: " ", linkKeys: ["footageUploads", "finalEdits"], hideFinalCut: true });
-  const box = document.querySelector("#videoModalBox .modal-actions");
-  if (box) { box.innerHTML = ""; box.appendChild(finishButton(videoId)); }
+  const box = openModal(`<h2>${escapeHtml(x.video.title || "(untitled)")}</h2>
+    <div class="meta" style="margin-bottom:10px">${escapeHtml(x.client.name)}${x.video.dueToEdit ? " · edit by " + escapeHtml(x.video.dueToEdit) : ""}</div>
+    ${editorCardBody(x.client, x.video)}`);
+  box.querySelector(".actions").appendChild(finishButton(videoId));
 }
 
 function renderCalendar() {

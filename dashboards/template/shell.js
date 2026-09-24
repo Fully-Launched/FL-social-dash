@@ -126,7 +126,7 @@ const STATUS_ORDER = ["concept_pending","to_film","filmed","ready_to_edit","with
 // the two, used in both directions so reads and writes can't drift apart.
 const VIDEO_COLUMNS = {
   id: "id", clientId: "client_id", title: "title", platform: "platform",
-  hook: "hook", overview: "overview", body: "body", concept: "concept",
+  hook: "hook", overview: "overview", outline: "outline", body: "body", concept: "concept",
   filmingDirection: "filming_instructions", caption: "caption", note: "note",
   status: "status", editorId: "editor_id", editorBrief: "editor_brief",
   dueToFilm: "due_to_film", dueToEdit: "due_to_edit", postDate: "post_date",
@@ -138,7 +138,7 @@ const VIDEO_COLUMNS = {
 // access (RLS); clients and editors go through VIDEO_ACTIONS below.
 // Gate-1 columns are deliberately absent — use the approve_concept action,
 // so every approval is stamped and logged.
-const VIDEO_WRITABLE = ["clientId","title","platform","hook","overview","body","concept",
+const VIDEO_WRITABLE = ["clientId","title","platform","hook","overview","outline","body","concept",
   "filmingDirection","caption","note","status","editorId","editorBrief","dueToFilm","dueToEdit","postDate","finalCutUrl","onScreenCaption"];
 
 function videoFromRow(row) {
@@ -270,7 +270,7 @@ function openVideoModal(client, video, opts) {
   ensureModalRoot();
   const f = client.driveFolders || {};
   const linkKeys = opts.linkKeys || Object.keys(f);
-  const linkLabels = { root: "Client folder", footageUploads: "Raw footage", finalEdits: "Finished video folder", brandVoice: "Brand voice", hooks: "Hooks", assets: "Assets", customerData: "Customer data", contentIdeas: "Content ideas" };
+  const linkLabels = { root: "Client folder", footageUploads: "Raw footage", finalEdits: "Finished video folder", brandVoice: "Brand guidelines", hooks: "Hooks", assets: "Assets", customerData: "Customer data", contentIdeas: "Content ideas" };
   const instructions = opts.hideEditorBrief ? "" : editorInstructions(video);
 
   document.getElementById("videoModalBox").innerHTML = `
@@ -285,6 +285,7 @@ function openVideoModal(client, video, opts) {
     </div>
 
     ${modalField("Overview", video.overview)}
+    ${modalField("Outline", video.outline)}
     ${modalField("Hook", video.hook)}
     ${modalField("What to say", video.body)}
     ${modalField("How to film it", video.filmingDirection)}
