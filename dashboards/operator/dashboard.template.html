@@ -206,8 +206,10 @@ async function requestEditRevisions(id) {
   if (!note.trim()) { alert("Add a note so the editor knows what to change."); return; }
   await updateVideo(id, { status: "with_editor", note: note.trim() });
 }
-async function sendToEditor(id) {
-  const sel = document.getElementById("assign_" + id);
+// Reads the picker next to the clicked button: the same video can be on
+// the page twice (its row, and the popup over it), each with a picker.
+async function sendToEditor(id, btn) {
+  const sel = btn.parentElement.querySelector("select");
   const editorId = sel ? sel.value : "";
   if (!editorId) { alert("Pick an editor first."); return; }
   await updateVideo(id, { editorId, status: "with_editor" });
@@ -241,7 +243,7 @@ function editorSelect(id, selected) {
   if (!EDITORS.length) return `<span class="meta">No editors set up yet — see "Adding an editor" in CLAUDE.md</span>`;
   const opts = EDITORS.filter(e => e.active || e.id === selected)
     .map(e => `<option value="${e.id}" ${e.id === selected ? "selected" : ""}>${escapeHtml(e.name)}</option>`).join("");
-  return `<select id="assign_${id}" style="font-size:0.82rem;padding:5px 6px"><option value="">Pick editor…</option>${opts}</select>`;
+  return `<select style="font-size:0.82rem;padding:5px 6px"><option value="">Pick editor…</option>${opts}</select>`;
 }
 
 // The buttons each status gets, wherever the video shows up.
@@ -254,7 +256,7 @@ function operatorActionsHtml(x) {
   }
   if (v.status === "client_review") out.push(smallBtn("Approve for client", `approveForClient('${id}', 'ready_to_post', 'video')`, "primary"));
   if (v.status === "ready_to_edit" || (v.status === "filmed" && x.client.clientSystem === "concierge")) {
-    out.push(editorSelect(id, v.editorId), smallBtn("Send to editor", `sendToEditor('${id}')`, "primary"));
+    out.push(editorSelect(id, v.editorId), smallBtn("Send to editor", `sendToEditor('${id}', this)`, "primary"));
   }
   if (v.status === "in_review") {
     out.push(smallBtn("Approve edit", `approveEdit('${id}')`, "primary"), smallBtn("Request revisions", `requestEditRevisions('${id}')`, "reject"));
