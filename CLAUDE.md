@@ -328,7 +328,8 @@ fully-social-os/
   supabase/
     migrations/                001 (tables + RLS), 002 (overview/body columns),
                                003 (write path: action functions, audit log,
-                               active-editor RLS)
+                               active-editor RLS), 004 (final_cut_url — link to
+                               each finished video)
     config.example.js          template for supabase/config.js (gitignored —
                                the real Supabase URL/anon key, local dev only)
 ```
@@ -355,7 +356,8 @@ Who can write what (`supabase/migrations/003_social_videos_write_path.sql`):
   approve_concept, request_concept_changes (clears gate 1 — the concept goes
   back to the owner), reject, mark_filmed, mark_ready_to_edit (self-serve
   only), approve_final, request_revisions.
-- **Editors** — no direct writes. Only `social_editor_mark_delivered`.
+- **Editors** — no direct writes. Only `social_editor_mark_delivered(video,
+  final_cut_url)`, which also saves the Drive link to the finished video.
   Every editor policy requires `social_editors.active` — a deactivated
   editor sees nothing. (Revoke their session in Supabase Auth too.)
 
@@ -424,7 +426,10 @@ the older `/clients/<slug>/portal.html`). The client sees: what's waiting
 on them, concepts to approve (with filming instructions), what to film with
 a "Drop footage here" link to their Drive footage folder, what's in
 progress, finished edits for final approval, and a calendar of film and
-post dates. Every button calls `social_client_video_action`. Concierge
+post dates, organized into four tabs: Needs your approval (new ideas and
+finished videos), To film, In progress, Ready & posted. "I've uploaded my
+footage" is one tap (it runs mark_filmed then mark_ready_to_edit). Every
+button calls `social_client_video_action`. Concierge
 clients only see the final-approval side. An operator opening a portal sees
 exactly what the client sees, minus the client's buttons, plus a banner.
 Analytics is off the nav until there's live data. News only shows when
@@ -433,8 +438,10 @@ Analytics is off the nav until there's live data. News only shows when
 ### Editor dashboard — `/editor/dashboard.html`
 
 An editor sees only videos assigned to them at `with_editor` or later
-(RLS): the brief, the footage / deliver / brand-voice links, a due-date
-calendar, "Mark delivered", and a history of what they've delivered. An
+(RLS): the brief, the footage / upload / brand-voice links, a due-date
+calendar, "Finished — send for review" (asks for the Drive link to the
+finished video, shown to the owner and client as "▶ Watch"), and a history
+of what they've delivered. An
 operator sees every editor's queue with a filter.
 
 ## Adding a client
@@ -445,6 +452,22 @@ the real Drive folder exists (created by hand — this repo never creates
 Drive folders), add its links with "Edit". Giving the client a login
 means creating their Supabase Auth user and a `social_client_users` row —
 blocked on the CRM fix above.
+
+## Adding an editor
+
+`editor_id` must point at a `social_editors` row, which must point at a
+Supabase Auth user — so a video can't go to an editor until one exists.
+
+- **You editing yourself (works today, no new login):** in the SQL editor,
+  `insert into social_editors (id, name, email) select id, name, email from
+  social_operators where email = '<your email>';` — then you appear in the
+  "Pick editor" list and can use the editor dashboard.
+- **A real editor:** Supabase → Authentication → Add user (their email),
+  then `insert into social_editors (id, name, email) values ('<their auth
+  user id>', '<name>', '<email>');`. Blocked on the CRM fix above, like
+  client logins.
+- **Offboarding:** `update social_editors set active = false where email =
+  '<email>';` and sign them out in Supabase Auth.
 
 ## Build & deploy
 

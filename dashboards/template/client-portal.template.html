@@ -47,30 +47,34 @@
 
   <section class="view" id="view-videos">
     <div class="page-head"><h1>My Videos</h1><p id="videosSubhead"></p></div>
+    <div class="chip-row" id="videoTabs"></div>
 
-    <div class="chip-row">
-      <div class="chip active" data-tab="film">To Film</div>
-      <div class="chip" data-tab="approve">Ready to Approve</div>
-    </div>
-
-    <div id="tabFilm">
+    <div data-panel="approve">
       <div id="groupConcepts">
-        <h2 style="font-size:1rem;margin:22px 0 10px">Concepts awaiting your approval</h2>
+        <h2 style="font-size:1rem;margin:18px 0 10px">New ideas to review</h2>
+        <p class="meta" style="margin:-4px 0 10px">Approve the ones you want to film, ask for changes, or say no.</p>
         <div id="listConcepts"></div>
       </div>
-      <div id="groupToFilm">
-        <h2 style="font-size:1rem;margin:22px 0 10px">To film</h2>
-        <div id="listToFilm"></div>
-      </div>
-      <h2 style="font-size:1rem;margin:22px 0 10px">In progress — no action needed from you yet</h2>
+      <h2 style="font-size:1rem;margin:22px 0 10px">Finished videos to approve</h2>
+      <p class="meta" style="margin:-4px 0 10px">Watch each one. Approve it to schedule it for posting, or ask for changes.</p>
+      <div id="listReview"></div>
+    </div>
+
+    <div data-panel="film" style="display:none">
+      <p class="meta" style="margin:8px 0 12px">Film each video using its instructions, upload the footage to your folder, then tap <b>I've uploaded my footage</b>.</p>
+      <div id="listToFilm"></div>
+    </div>
+
+    <div data-panel="progress" style="display:none">
+      <p class="meta" style="margin:8px 0 12px">Being edited and checked — nothing needed from you yet.</p>
       <div id="listProgress"></div>
     </div>
 
-    <div id="tabApprove" style="display:none">
-      <h2 style="font-size:1rem;margin:22px 0 10px">Ready for your final approval</h2>
-      <div id="listReview"></div>
-      <h2 style="font-size:1rem;margin:22px 0 10px">Approved / posted</h2>
-      <div id="listDone"></div>
+    <div data-panel="done" style="display:none">
+      <h2 style="font-size:1rem;margin:18px 0 10px">Ready to post</h2>
+      <div id="listReady"></div>
+      <h2 style="font-size:1rem;margin:22px 0 10px">Posted</h2>
+      <div id="listPosted"></div>
     </div>
   </section>
 
@@ -114,6 +118,21 @@ let HIDDEN_CONCEPTS = 0;    // operator view only: concepts the client can't see
 let IS_SELF_SERVE = true;
 let IS_OPERATOR = false;
 const calState = { offset: 0 };
+let activeTab = null;
+
+// The four places a video can be, from the client's point of view.
+const TABS = [
+  { key: "approve",  label: "Needs your approval", statuses: ["concept_pending", "client_review"] },
+  { key: "film",     label: "To film",             statuses: ["to_film", "filmed"], selfServeOnly: true },
+  { key: "progress", label: "In progress",         statuses: ["ready_to_edit", "with_editor", "in_review"] },
+  { key: "done",     label: "Ready & posted",      statuses: ["ready_to_post", "posted"] },
+];
+function tabsForClient() { return TABS.filter(t => IS_SELF_SERVE || !t.selfServeOnly); }
+function videosInTab(key) {
+  const t = TABS.find(x => x.key === key);
+  // For concierge clients "filmed" means the operator has it — show it as in progress.
+  return VIDEOS.filter(v => t.statuses.includes(v.status) || (key === "progress" && !IS_SELF_SERVE && v.status === "filmed"));
+}
 
 // One shared file serves every client — which one comes from the URL
 // (/clients/<slug>, or the older /clients/<slug>/portal.html; see
@@ -145,6 +164,8 @@ function actionsFor(v) { return IS_OPERATOR ? [] : videoActionsFor(v, "client", 
 
 async function doAction(actionKey, videoId, btnEl) {
   const a = VIDEO_ACTIONS[actionKey];
+  const video = VIDEOS.find(v => v.id === videoId);
+  if (actionKey === "mark_filmed" && !confirm(`Have you uploaded all the footage for "${video ? video.title : "this video"}" to your footage folder?`)) return;
   let note = null;
   if (a.needsNote) {
     note = prompt(a.notePrompt || "Add a note:");
@@ -152,7 +173,10 @@ async function doAction(actionKey, videoId, btnEl) {
     if (!note.trim()) { alert("Please add a short note so we know what to change."); return; }
   }
   if (btnEl) { btnEl.disabled = true; btnEl.textContent = "Saving…"; }
-  const r = await runVideoAction(actionKey, videoId, note);
+  let r = await runVideoAction(actionKey, videoId, note);
+  // Uploading footage is one step for the client: filmed, then straight on
+  // to editing.
+  if (!r.error && actionKey === "mark_filmed") r = await runVideoAction("mark_ready_to_edit", videoId);
   if (r.error) {
     alert("That didn't save: " + r.error);
     if (btnEl) { btnEl.disabled = false; btnEl.textContent = a.label; }
@@ -181,7 +205,8 @@ function videoCard(video) {
   const card = document.createElement("div");
   card.className = "card";
   const platforms = (video.platform || []).join(" · ");
-  const showFootage = DRIVE_FOLDERS.footageUploads && ["to_film", "filmed"].includes(video.status);
+  const showFootage = DRIVE_FOLDERS.footageUploads && IS_SELF_SERVE && ["to_film", "filmed"].includes(video.status);
+  const showWatch = video.finalCutUrl && ["client_review", "ready_to_post", "posted"].includes(video.status);
   card.innerHTML = `
     <div class="row" style="border:none;padding:0 0 10px">
       <div class="left"><b class="video-card" style="display:inline-block" data-open>${escapeHtml(video.title || "(untitled)")}</b>
@@ -190,11 +215,14 @@ function videoCard(video) {
     </div>
     ${video.overview ? `<div style="margin:10px 0 4px;color:var(--sub);font-size:0.9rem">${escapeHtml(video.overview)}</div>` : ""}
     ${fieldRow("Hook", video.hook)}
-    ${["concept_pending", "to_film"].includes(video.status) ? fieldRow("Filming instructions", video.filmingDirection) : ""}
+    ${fieldRow("What to say", ["concept_pending", "to_film"].includes(video.status) ? video.body : null)}
+    ${["concept_pending", "to_film"].includes(video.status) ? fieldRow("How to film it", video.filmingDirection) : ""}
     ${fieldRow("Caption", video.caption)}
     ${video.note ? `<div class="meta" style="margin-top:8px">Note: ${escapeHtml(video.note)}</div>` : ""}
+    ${showFootage ? `<div class="meta" style="margin-top:10px">Name your files starting with <b>${escapeHtml(video.title || "the video title")}</b> so the editor can find them.</div>` : ""}
     <div class="actions" style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
-      ${showFootage ? `<a class="btn" href="${escapeHtml(DRIVE_FOLDERS.footageUploads)}" target="_blank" rel="noopener">📁 Drop footage here</a>` : ""}
+      ${showWatch ? `<a class="btn primary" href="${escapeHtml(video.finalCutUrl)}" target="_blank" rel="noopener">▶ Watch the video</a>` : ""}
+      ${showFootage ? `<a class="btn" href="${escapeHtml(DRIVE_FOLDERS.footageUploads)}" target="_blank" rel="noopener">📁 Upload footage</a>` : ""}
     </div>
   `;
   card.querySelector("[data-open]").onclick = () => openClientVideoModal(video.id);
@@ -224,13 +252,8 @@ function renderOperatorBanner() {
 
 function renderHome() {
   const todo = VIDEOS.filter(v => actionsFor(v).length || (IS_OPERATOR && videoActionsFor(v, "client", CLIENT.client_system).length));
-  const stats = [
-    { label: "Waiting on you", value: todo.length },
-    { label: "In progress", value: VIDEOS.filter(v => ["filmed","ready_to_edit","with_editor","in_review"].includes(v.status)).length },
-    { label: "Ready to post", value: VIDEOS.filter(v => v.status === "ready_to_post").length },
-    { label: "Posted", value: VIDEOS.filter(v => v.status === "posted").length },
-  ];
-  document.getElementById("homeStats").innerHTML = stats.map(s => `<div class="stat-card"><div class="label">${s.label}</div><div class="value">${s.value}</div></div>`).join("");
+  document.getElementById("homeStats").innerHTML = tabsForClient().map(t =>
+    `<div class="stat-card video-card" onclick="openTab('${t.key}')"><div class="label">${t.label}</div><div class="value">${videosInTab(t.key).length}</div></div>`).join("");
   document.getElementById("homeTodo").innerHTML = todo.length
     ? todo.map(v => `<div class="row"><div class="left"><b class="video-card" style="display:inline-block" onclick="openClientVideoModal('${v.id}')">${escapeHtml(v.title || "(untitled)")}</b>
         <div class="meta">${v.dueToFilm && ["concept_pending","to_film"].includes(v.status) ? "film by " + escapeHtml(v.dueToFilm) : v.postDate ? "posts " + escapeHtml(v.postDate) : ""}</div></div>${statusBadge(v.status, STATUS_LABEL)}</div>`).join("")
@@ -240,22 +263,42 @@ function renderHome() {
 
 function renderVideos() {
   document.getElementById("videosSubhead").textContent = IS_SELF_SERVE
-    ? "Approve concepts, film them, and give final sign-off before anything posts."
-    : "We handle the filming — you just give final sign-off before anything posts.";
+    ? "Approve ideas, film them, and give final sign-off before anything posts."
+    : "We handle the filming — you just approve the finished videos before they post.";
   document.getElementById("groupConcepts").style.display = IS_SELF_SERVE ? "" : "none";
-  document.getElementById("groupToFilm").style.display = IS_SELF_SERVE ? "" : "none";
-  const fill = (elId, statuses) => {
+  const byPostDate = (a, b) => (a.postDate || "9999").localeCompare(b.postDate || "9999");
+  const byFilmDate = (a, b) => (a.dueToFilm || "9999").localeCompare(b.dueToFilm || "9999");
+  const fill = (elId, vids, empty) => {
     const el = document.getElementById(elId);
-    const vids = VIDEOS.filter(v => statuses.includes(v.status));
     el.innerHTML = "";
-    if (!vids.length) { el.innerHTML = '<div class="empty">Nothing here.</div>'; return; }
+    if (!vids.length) { el.innerHTML = `<div class="empty">${empty}</div>`; return; }
     vids.forEach(v => el.appendChild(videoCard(v)));
   };
-  fill("listConcepts", ["concept_pending"]);
-  fill("listToFilm", ["to_film"]);
-  fill("listProgress", ["filmed","ready_to_edit","with_editor","in_review"]);
-  fill("listReview", ["client_review"]);
-  fill("listDone", ["ready_to_post","posted"]);
+  fill("listConcepts", VIDEOS.filter(v => v.status === "concept_pending").sort(byFilmDate), "No new ideas right now.");
+  fill("listReview", VIDEOS.filter(v => v.status === "client_review").sort(byPostDate), "No finished videos waiting.");
+  fill("listToFilm", videosInTab("film").sort(byFilmDate), "Nothing to film right now.");
+  fill("listProgress", videosInTab("progress").sort(byPostDate), "Nothing in progress.");
+  fill("listReady", VIDEOS.filter(v => v.status === "ready_to_post").sort(byPostDate), "Nothing scheduled yet.");
+  fill("listPosted", VIDEOS.filter(v => v.status === "posted").sort(byPostDate).reverse(), "Nothing posted yet.");
+  renderVideoTabs();
+}
+
+function renderVideoTabs() {
+  const tabs = tabsForClient();
+  if (!activeTab || !tabs.some(t => t.key === activeTab)) {
+    const firstWithItems = tabs.find(t => videosInTab(t.key).length);
+    activeTab = (firstWithItems || tabs[0]).key;
+  }
+  document.getElementById("videoTabs").innerHTML = tabs.map(t =>
+    `<div class="chip ${t.key === activeTab ? "active" : ""}" data-tab="${t.key}">${t.label} (${videosInTab(t.key).length})</div>`).join("");
+  document.querySelectorAll("#videoTabs .chip").forEach(c => c.onclick = () => { activeTab = c.dataset.tab; renderVideoTabs(); });
+  document.querySelectorAll("[data-panel]").forEach(p => { p.style.display = p.dataset.panel === activeTab ? "" : "none"; });
+}
+function openTab(key) {
+  activeTab = key;
+  renderVideoTabs();
+  const nav = document.querySelector('.nav-item[data-view="videos"]');
+  if (nav) nav.click();
 }
 
 function renderCalendar() {
@@ -280,23 +323,6 @@ function renderNews() {
     <div class="meta">${escapeHtml(n.source)} · ${escapeHtml(n.date)}</div></div>
     <span class="badge" style="background:var(--card2);color:var(--sub)">${escapeHtml(n.category)}</span></div>
   `).join("") : '<div class="empty">Nothing filed under this category yet.</div>';
-}
-
-// My Videos tabs: "To Film" (concept approval through filming, plus a
-// read-only look at what's in progress) vs. "Ready to Approve" (the final
-// review gate, plus history).
-function wireVideoTabs() {
-  document.querySelectorAll('.chip[data-tab]').forEach(chip => {
-    chip.onclick = () => {
-      document.querySelectorAll('.chip[data-tab]').forEach(c => c.classList.remove("active"));
-      chip.classList.add("active");
-      document.getElementById("tabFilm").style.display = chip.dataset.tab === "film" ? "" : "none";
-      document.getElementById("tabApprove").style.display = chip.dataset.tab === "approve" ? "" : "none";
-    };
-  });
-  // Concierge clients never approve a concept or film anything themselves —
-  // land them on the tab that actually has something to do.
-  if (!IS_SELF_SERVE) document.querySelector('.chip[data-tab="approve"]').click();
 }
 
 function renderDocs() {
@@ -352,7 +378,6 @@ async function startApp(user, access) {
   NEWS = ALL_NEWS.filter(item => !item.relevantClients || !item.relevantClients.length || item.relevantClients.indexOf(CLIENT.slug) !== -1);
   document.getElementById("newsNav").style.display = NEWS.length ? "" : "none";
 
-  wireVideoTabs();
   renderNews(); renderDocs();
   initRouter("home");
   await loadVideos();
