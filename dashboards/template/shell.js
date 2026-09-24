@@ -130,7 +130,7 @@ const VIDEO_COLUMNS = {
   filmingDirection: "filming_instructions", caption: "caption", note: "note",
   status: "status", editorId: "editor_id", editorBrief: "editor_brief",
   dueToFilm: "due_to_film", dueToEdit: "due_to_edit", postDate: "post_date",
-  finalCutUrl: "final_cut_url",
+  finalCutUrl: "final_cut_url", onScreenCaption: "on_screen_caption",
   conceptApprovedBy: "concept_approved_by", conceptApprovedAt: "concept_approved_at",
   createdAt: "created_at", updatedAt: "updated_at",
 };
@@ -139,7 +139,7 @@ const VIDEO_COLUMNS = {
 // Gate-1 columns are deliberately absent — use the approve_concept action,
 // so every approval is stamped and logged.
 const VIDEO_WRITABLE = ["clientId","title","platform","hook","overview","body","concept",
-  "filmingDirection","caption","note","status","editorId","editorBrief","dueToFilm","dueToEdit","postDate","finalCutUrl"];
+  "filmingDirection","caption","note","status","editorId","editorBrief","dueToFilm","dueToEdit","postDate","finalCutUrl","onScreenCaption"];
 
 function videoFromRow(row) {
   const v = {};
@@ -288,10 +288,12 @@ function openVideoModal(client, video, opts) {
     ${modalField("Hook", video.hook)}
     ${modalField("What to say", video.body)}
     ${modalField("How to film it", video.filmingDirection)}
+    ${modalField("On-screen caption", video.onScreenCaption)}
     ${modalField("Caption", video.caption)}
     ${video.note ? modalField("Note", video.note) : ""}
 
     ${modalField("Editing instructions", instructions)}
+    ${opts.hideEditorBrief ? "" : modalField("Revisions needed", (video.editorBrief || {}).revisions)}
     ${instructions && video.assignedEditor ? modalField("Editor", video.assignedEditor) : ""}
 
     <div class="modal-links">

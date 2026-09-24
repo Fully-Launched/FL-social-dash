@@ -183,6 +183,7 @@ function videoCard(video) {
     ${fieldRow("Hook", video.hook)}
     ${isIdea ? fieldRow("What to say", video.body) : ""}
     ${isIdea && IS_SELF_SERVE ? fieldRow("How to film it", video.filmingDirection) : ""}
+    ${video.status === "client_review" ? fieldRow("On-screen caption", video.onScreenCaption) : ""}
     ${video.status === "client_review" ? fieldRow("Caption", video.caption) : ""}
     ${video.note ? `<div class="meta" style="margin-top:8px">Note: ${escapeHtml(video.note)}</div>` : ""}
     ${showFootage ? `<div class="meta" style="margin-top:10px">Name your files starting with <b>${escapeHtml(video.title || "the video title")}</b>.</div>` : ""}

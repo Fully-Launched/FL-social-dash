@@ -175,7 +175,8 @@ chk("all back to Tait for review", (await count("status='in_review'")) === 30);
 
 // ── 7. Operator reviews: revisions, or approve + caption ──
 async function approveWithCaption(p, i) {
-  await click(btn(opRow(p, "#editsList", title(i)), "Approve & add caption"), "approve edit " + i);
+  await click(btn(opRow(p, "#editsList", title(i)), "Approve & add captions"), "approve edit " + i);
+  $(p, '#videoModalBox [data-f="onScreenCaption"]').value = "On screen " + (i + 1);
   $(p, '#videoModalBox [data-f="caption"]').value = "Caption " + (i + 1);
   await click($(p, "#aeSave"), "save caption " + i);
 }
@@ -183,39 +184,52 @@ op = track(await OP());
 const r0 = opRow(op, "#editsList", title(0));
 chk("Watch opens the finished video folder", r0 && !!r0.querySelector('a[href="https://drive/fl-final"]'));
 // A caption is required.
-await click(btn(r0, "Approve & add caption"), "approve without caption");
+await click(btn(r0, "Approve & add captions"), "approve without caption");
 await click($(op, "#aeSave"), "save empty caption");
 chk("caption required", $(op, "#aeError").textContent.includes("caption") && (await statusOf(title(0))).status === "in_review");
 op.w.closeVideoModal();
 for (const i of idx) {
-  if (V.opRev.includes(i)) { op.ui.prompts.push("Tighten the intro " + i); await click(btn(opRow(op, "#editsList", title(i)), "Revisions needed"), "revisions " + i); }
+  if (V.opRev.includes(i)) {
+    await click(btn(opRow(op, "#editsList", title(i)), "Revisions needed"), "revisions " + i);
+    $(op, '#videoModalBox [data-f="revisions"]').value = "Tighten the intro " + i;
+    await click($(op, "#rvSave"), "send revisions " + i);
+  }
   else await approveWithCaption(op, i);
 }
 if (V.opRev.length) {
   ed = track(await ED());
-  for (const i of V.opRev) chk(`editor sees Tait's note #${i}`, edCard(ed, title(i))?.textContent.includes("Tighten the intro " + i));
+  for (const i of V.opRev) chk(`editor sees Tait's revisions #${i}`, edCard(ed, title(i))?.textContent.includes("Revisions needed") && edCard(ed, title(i)).textContent.includes("Tighten the intro " + i));
+  chk("revisions are never in the note the client sees", (await count("note like 'Tighten%'")) === 0);
+  const clr = track(await CL());
+  await click($$(clr, ".nav-item").find(n => n.dataset.view === "calendar"), "client calendar");
+  await click(btn($(clr, "#calGrid"), "›"), "next month");
+  await click($$(clr, "#calGrid .cal-chip").find(c => c.textContent === title(V.opRev[0])), "client opens revised video");
+  chk("client never sees revisions", !clr.d.body.textContent.includes("Tighten the intro"));
   await editorFinish(V.opRev);
   op = track(await OP());
   for (const i of V.opRev) await approveWithCaption(op, i);
 }
-chk("all 30 with the client, captioned", (await count("status='client_review' and caption like 'Caption %'")) === 30);
+chk("all 30 with the client, both captions", (await count("status='client_review' and caption like 'Caption %' and on_screen_caption like 'On screen %'")) === 30);
+chk("revisions cleared once approved", (await count("editor_brief->>'revisions' is not null")) === 0);
 
 // ── 8. Client approves for posting ──
 cl = track(await CL());
 chk("client has 30 finished videos to approve", $(cl, "#videoTabs").textContent.includes("Finished videos to approve (30)"), $(cl, "#videoTabs").textContent);
 const fr = portalCard(cl, "#listFinal", title(0));
-chk("client can watch it and read the caption", fr && !!fr.querySelector('a[href="https://drive/fl-final"]') && fr.textContent.includes("Caption 1"));
+chk("client can watch it and read both captions", fr && !!fr.querySelector('a[href="https://drive/fl-final"]') && fr.textContent.includes("Caption 1") && fr.textContent.includes("On screen 1"));
 for (const i of idx) {
   const card = portalCard(cl, "#listFinal", title(i));
   if (V.clientRev.includes(i)) { cl.ui.prompts.push("Use the other take " + i); await click(btn(card, "Request changes"), "client changes " + i); }
   else await click(btn(card, "Approve for posting"), "approve for posting " + i);
 }
 if (V.clientRev.length) {
+  const edc = track(await ED());
+  for (const i of V.clientRev) chk(`editor sees the client's change #${i} under Revisions needed`, edCard(edc, title(i))?.textContent.includes("Use the other take " + i));
   await editorFinish(V.clientRev);
   op = track(await OP());
   for (const i of V.clientRev) {
-    await click(btn(opRow(op, "#editsList", title(i)), "Approve & add caption"), "approve again " + i);
-    chk(`caption kept for #${i}`, $(op, '#videoModalBox [data-f="caption"]').value === "Caption " + (i + 1));
+    await click(btn(opRow(op, "#editsList", title(i)), "Approve & add captions"), "approve again " + i);
+    chk(`captions kept for #${i}`, $(op, '#videoModalBox [data-f="caption"]').value === "Caption " + (i + 1) && $(op, '#videoModalBox [data-f="onScreenCaption"]').value === "On screen " + (i + 1));
     await click($(op, "#aeSave"), "resend " + i);
   }
   cl = track(await CL());
@@ -227,7 +241,7 @@ chk("all 30 ready to post", (await count("status='ready_to_post'")) === 30);
 op = track(await OP());
 chk("Ready to Post lists 30", $$(op, "#postList > .card").length === 30, $$(op, "#postList > .card").length);
 const p0 = $$(op, "#postList > .card")[0];
-chk("in post-date order, with date, caption, finished video", p0.textContent.includes(title(0)) && p0.textContent.includes("Post " + day(0)) && p0.textContent.includes("Caption 1") && !!p0.querySelector('a[href="https://drive/fl-final"]'));
+chk("in post-date order, with date, caption, finished video", p0.textContent.includes(title(0)) && p0.textContent.includes("Post " + day(0)) && p0.textContent.includes("Caption 1") && p0.textContent.includes("On screen 1") && !!p0.querySelector('a[href="https://drive/fl-final"]'));
 for (let n = 0; n < V.post; n++) await click(btn($$(op, "#postList > .card")[0], "Mark posted"), "post " + n);
 chk(`${V.post} posted`, (await count("status='posted'")) === V.post);
 
@@ -254,7 +268,7 @@ ed = track(await ED());
 for (const t of ["Dad 1", "Dad 2"]) await click(btn(edCard(ed, t), "Finished"), "finish " + t);
 op = track(await OP());
 for (const t of ["Dad 1", "Dad 2"]) {
-  await click(btn(opRow(op, "#editsList", t), "Approve & add caption"), "approve " + t);
+  await click(btn(opRow(op, "#editsList", t), "Approve & add captions"), "approve " + t);
   $(op, '#videoModalBox [data-f="caption"]').value = t + " caption";
   await click($(op, "#aeSave"), "caption " + t);
 }
