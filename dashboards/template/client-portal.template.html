@@ -39,18 +39,23 @@
     </div>
     <div class="chip-row" id="videoTabs"></div>
 
+    <div class="empty" id="allEmpty" style="display:none">Nothing needs you right now — stay tuned for your finished edits.</div>
+
     <div data-panel="film">
+      <h2 class="panel-title">To film</h2>
       <p class="meta" style="margin:8px 0 12px">Film each video using its script or outline and upload the footage to your folder. Then tap <b>Video has been filmed</b>. Want something different? Tap <b>Suggest changes</b>.</p>
       <div id="listToFilm"></div>
     </div>
 
     <div data-panel="ideas" style="display:none">
+      <h2 class="panel-title">Ideas to approve</h2>
       <p class="meta" style="margin:8px 0 12px">We'll film these for you. Approve the ideas you like, or suggest changes and we'll rework them.</p>
       <div id="listIdeas"></div>
     </div>
 
     <div data-panel="final" style="display:none">
-      <p class="meta" style="margin:8px 0 12px">Watch each finished video and check its captions — edit them right here if you'd like. Then approve it for posting, or ask for changes to the video.</p>
+      <h2 class="panel-title">Finished videos to approve</h2>
+      <p class="meta" style="margin:8px 0 12px">Watch each finished video and check its captions. Then approve it for posting, or ask for changes.</p>
       <div id="listFinal"></div>
     </div>
   </section>
@@ -92,16 +97,18 @@ let VIDEOS = [];            // from social_videos (videoFromRow shape)
 let HIDDEN_CONCEPTS = 0;    // operator view only: ideas the client can't see (sent back with suggestions)
 let IS_OPERATOR = false;
 const calState = { offset: 0 };
-let activeTab = null;
+let activeTab = "all";
 
 const filmedBy = v => filmedByOf(v, CLIENT.client_system);
 const clientFilms = () => CLIENT.client_system !== "concierge";   // the client's default
 
-const TABS = [
+// "All" gathers every action the client has to take, grouped by kind.
+const ACTION_TABS = [
   { key: "film",  label: "To film",                    match: v => filmedBy(v) === "client" && ["concept_pending", "to_film", "filmed"].includes(v.status), shownFor: () => clientFilms() },
   { key: "ideas", label: "Ideas to approve",           match: v => filmedBy(v) === "us" && v.status === "concept_pending", shownFor: () => !clientFilms() },
   { key: "final", label: "Finished videos to approve", match: v => v.status === "client_review", shownFor: () => true },
 ];
+const TABS = [{ key: "all", label: "All", match: v => ACTION_TABS.some(t => t.match(v)), shownFor: () => true }, ...ACTION_TABS];
 // A tab shows when it fits how this client usually works, or when it has
 // something in it (a one-off video filmed the other way).
 function tabsForClient() { return TABS.filter(t => t.shownFor() || videosInTab(t.key).length); }
@@ -210,7 +217,8 @@ function lbl(text) { return `<label style="display:block;font-size:0.72rem;text-
 
 // What the client sees on a video, by stage. Before filming: film-by date
 // (if they film it), hook, script, outline, how to film it. At final
-// approval: the video and both captions, editable.
+// approval: the video and both captions (read-only — changes go through
+// "Request changes").
 function clientCardBody(video) {
   const fb = filmedBy(video);
   const isIdea = ["concept_pending", "to_film", "filmed"].includes(video.status);
@@ -225,9 +233,7 @@ function clientCardBody(video) {
     ${clientFilmsIt ? fieldRow("How to film it", video.filmingDirection) : ""}
     ${clientFilmsIt && DRIVE_FOLDERS.footageUploads ? `<div class="meta" style="margin-top:10px">Upload your clips to your footage folder, with file names starting with <b>${escapeHtml(video.title || "the video title")}</b>.</div>` : ""}
     ${!isIdea && !final && video.postDate ? `<div class="meta">${escapeHtml(STATUS_LABEL[video.status] || video.status)} · posts ${escapeHtml(video.postDate)}</div>` : ""}
-    ${final ? `
-      ${lbl("On-screen caption")}<textarea data-cap="onScreenCaption" rows="2" style="font:inherit;font-size:0.92rem">${escapeHtml(video.onScreenCaption || "")}</textarea>
-      ${lbl("Caption")}<textarea data-cap="caption" rows="4" style="font:inherit;font-size:0.92rem">${escapeHtml(video.caption || "")}</textarea>` : ""}
+    ${final ? fieldRow("On-screen caption", video.onScreenCaption) + fieldRow("Caption", video.caption) : ""}
     <div class="actions" style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
       ${watch ? `<a class="btn primary" href="${escapeHtml(watch.url)}" target="_blank" rel="noopener">${video.finalCutUrl ? "▶ Watch the video" : "▶ Watch it in the finished video folder"}</a>` : ""}
       ${clientFilmsIt && DRIVE_FOLDERS.footageUploads ? `<a class="btn" href="${escapeHtml(DRIVE_FOLDERS.footageUploads)}" target="_blank" rel="noopener">📁 Upload footage</a>` : ""}
@@ -253,12 +259,10 @@ function wireActions(root, video) {
       if (key === "submit_footage") return confirmStep("Is your footage uploaded?",
         `Make sure every clip for <b>${escapeHtml(video.title || "this video")}</b> is in your footage folder before you send it to our editor.`,
         "Yes — send it to the editor", () => doAction(key, video.id, b));
-      if (key === "approve_final") return doAction(key, video.id, b, null, captionEdits(root, video));
       doAction(key, video.id, b);
     };
     actions.appendChild(b);
   });
-  if (IS_OPERATOR) actions.insertAdjacentHTML("beforeend", `<button onclick="openPortalEditForm('${video.id}')">✏️ Edit</button>`);
 }
 function openNoteBox(root, noteBox, video, key) {
   const a = VIDEO_ACTIONS[key];
@@ -273,13 +277,6 @@ function openNoteBox(root, noteBox, video, key) {
     doAction(key, video.id, send, text.value.trim());
   };
 }
-// Caption edits only count if the client actually changed them.
-function captionEdits(root, video) {
-  const val = k => (root.querySelector(`[data-cap="${k}"]`) || {}).value;
-  const cap = (val("caption") || "").trim(), osc = (val("onScreenCaption") || "").trim();
-  return { caption: cap && cap !== (video.caption || "") ? cap : null, onScreenCaption: osc && osc !== (video.onScreenCaption || "") ? osc : null };
-}
-
 function videoCard(video) {
   const card = document.createElement("div");
   card.className = "card";
@@ -297,46 +294,12 @@ function openClientVideoModal(videoId) {
   wireActions(box, video);
 }
 
-// ---------- operator: edit a video from the portal ----------
-// The fields the client sees. The full form (editor, instructions, any
-// status) stays in the operator dashboard.
-const PORTAL_EDIT_FIELDS = [
-  ["title", "Title"], ["hook", "Hook", 2], ["body", "Script", 4], ["outline", "Outline (bullet points, in order)", 4],
-  ["filmingDirection", "How to film it", 3], ["onScreenCaption", "On-screen caption", 2], ["caption", "Caption", 3], ["note", "Note", 2],
-];
-function openPortalEditForm(videoId) {
-  const v = VIDEOS.find(x => x.id === videoId);
-  if (!v) return;
-  const field = ([key, label, rows]) => lbl(label) + (rows
-    ? `<textarea data-f="${key}" rows="${rows}" style="width:100%">${escapeHtml(v[key] || "")}</textarea>`
-    : `<input type="text" data-f="${key}" value="${escapeHtml(v[key] || "")}" style="width:100%">`);
-  const date = (key, label) => `<div>${lbl(label)}${dateSelectHtml(key, v[key])}</div>`;
-  const box = openModal(`<h2>Edit video</h2>
-    ${PORTAL_EDIT_FIELDS.map(field).join("")}
-    ${date("dueToFilm", "Film by")}${date("dueToEdit", "Edit by")}${date("postDate", "Post date")}
-    <div class="modal-actions" style="margin-top:14px"><button class="primary" id="portalEditSave">Save</button><button onclick="closeVideoModal()">Cancel</button></div>`);
-  box.querySelector("#portalEditSave").onclick = async e => {
-    const patch = {};
-    box.querySelectorAll("[data-f]").forEach(el => { patch[el.dataset.f] = el.value.trim(); });
-    if (!patch.title) { alert("Give it a title."); return; }
-    e.target.disabled = true; e.target.textContent = "Saving…";
-    const { data, error } = await sbClient.from("social_videos").update(videoFieldsToRow(patch)).eq("id", videoId).select("id");
-    if (error || !data || !data.length) {
-      alert("Couldn't save: " + (error ? error.message : "that video wasn't found."));
-      e.target.disabled = false; e.target.textContent = "Save";
-      return;
-    }
-    closeVideoModal();
-    await loadVideos();
-  };
-}
-
 // ---------- pages ----------
 function renderOperatorBanner() {
   document.getElementById("operatorBanner").innerHTML = IS_OPERATOR ? `
     <div class="card" style="margin-bottom:14px"><b>You're viewing ${escapeHtml(CLIENT.name)}'s portal as the operator.</b>
-      <div class="meta">This is exactly what the client sees. You can click their buttons and edit videos for them. It's recorded as you, not the client.
-      The full editor (editor, instructions, any status) is in the <a href="/operator/dashboard.html" style="color:inherit;text-decoration:underline">operator dashboard</a>.
+      <div class="meta">This is exactly what the client sees, and you can click their buttons for them. It's recorded as you, not the client.
+      To edit a video, use the <a href="/operator/dashboard.html" style="color:inherit;text-decoration:underline">operator dashboard</a>.
       ${HIDDEN_CONCEPTS ? `<br>${HIDDEN_CONCEPTS} idea(s) with suggestions are back with you. Edit and send them again from the operator dashboard.` : ""}</div></div>` : "";
 }
 
@@ -360,14 +323,17 @@ function renderVideos() {
 
 function renderVideoTabs() {
   const tabs = tabsForClient();
-  if (!activeTab || !tabs.some(t => t.key === activeTab)) {
-    const firstWithItems = tabs.find(t => videosInTab(t.key).length);
-    activeTab = (firstWithItems || tabs[0]).key;
-  }
+  if (!tabs.some(t => t.key === activeTab)) activeTab = "all";
   document.getElementById("videoTabs").innerHTML = tabs.map(t =>
     `<div class="chip ${t.key === activeTab ? "active" : ""}" data-tab="${t.key}">${t.label} (${videosInTab(t.key).length})</div>`).join("");
   document.querySelectorAll("#videoTabs .chip").forEach(c => c.onclick = () => { activeTab = c.dataset.tab; renderVideoTabs(); });
-  document.querySelectorAll("[data-panel]").forEach(p => { p.style.display = p.dataset.panel === activeTab ? "" : "none"; });
+  // All: every kind that has something waiting, each under its heading.
+  const all = activeTab === "all";
+  document.querySelectorAll("[data-panel]").forEach(p => {
+    p.style.display = (all ? tabs.some(t => t.key === p.dataset.panel) && videosInTab(p.dataset.panel).length : p.dataset.panel === activeTab) ? "" : "none";
+    p.querySelector(".panel-title").style.display = all ? "" : "none";
+  });
+  document.getElementById("allEmpty").style.display = all && !videosInTab("all").length ? "" : "none";
 }
 
 function renderCalendar() {
