@@ -558,11 +558,10 @@ Spec or Architecture Reference if they ever disagree.
 
 As of 2026-09-23:
 
-- **Clients:** `grad-gig` (Grad Gig) and `test-fully-launched` (Fully
-  Launched), both self-serve, both in Supabase. Fully Launched's old
-  fabricated test videos were deleted rather than migrated; it starts
-  empty. `clients/test-fully-launched/README.md` still describes it as a
-  fake test client.
+- **Clients:** `grad-gig` (Grad Gig) and Fully Launched (Tait's own
+  agency — now a real client, `clients/fully-launched/`; its test videos
+  were cleared 2026-09-25 and its brain/customer data/taste/research are
+  outlines waiting on Tait's voice memo). Both self-serve, both in Supabase.
 - **Migration 003** must be run in Supabase before the rebuilt dashboards
   work — the client and editor buttons call its functions.
 - **No client or editor logins exist yet**, pending the CRM RLS fix.
