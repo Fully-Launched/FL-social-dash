@@ -47,7 +47,9 @@ chk("ready-to-post cards: captions + Mark posted", titlesIn("post").join() === "
 op.d.querySelector('[data-stage-tab="toEditor"]').click(); await settle();
 chk("Ready for an editor: client footage + we-film video", shown().join() === "toEditor" && titlesIn("toEditor").sort().join() === "A footage in,B we film");
 op.d.querySelector('[data-stage-tab="client"]').click(); await settle();
-chk("Waiting on client: ideas, to film, final", titlesIn("client").sort().join() === "A final,A idea,A to film,B idea", titlesIn("client"));
+chk("Waiting on client: grouped by status in pipeline order (ideas → to film → final)", titlesIn("client").join() === "A idea,B idea,A to film,A final", titlesIn("client"));
+const labels = Array.from(op.d.querySelectorAll('[data-stage="client"] .badge')).map(b => b.textContent);
+chk("status labels line up in order", labels.join() === "Idea,Idea,To film,Client final review", labels);
 
 // Client dropdown filters everything, and matches the chips at the top.
 const sel = op.d.getElementById("todoClient");
@@ -64,6 +66,16 @@ chk("…and the dropdown follows the chips", op.d.getElementById("todoClient").v
 op.d.querySelector('[data-stage-tab="post"]').click(); await settle();
 Array.from(op.d.querySelectorAll('[data-stage="post"] button')).find(b => b.textContent === "Mark posted").click(); await settle();
 chk("marked posted from To Do", (await db.query("select status from social_videos where title='A ready'")).rows[0].status === "posted" && tabs().post === "Ready to post (1)");
+
+// New ideas straight from To Do.
+chk("no separate Ready to Post page", !op.d.getElementById("view-post") && !Array.from(op.d.querySelectorAll(".nav-item")).some(n => n.textContent.includes("Ready to Post")));
+const todoBtn = label => Array.from(op.d.querySelectorAll("#view-todo button")).find(b => b.textContent.trim() === label);
+todoBtn("+ New idea").click(); await settle();
+chk("+ New idea on To Do opens the idea form", op.d.getElementById("videoModalBox").textContent.includes("New idea") && !!op.d.getElementById("vfSave"));
+op.w.closeVideoModal();
+todoBtn("📋 Add ideas with Claude").click(); await settle();
+chk("Add ideas with Claude on To Do opens the paste box", !!op.d.getElementById("bkText"));
+op.w.closeVideoModal();
 
 chk("no page errors", !op.ui.errors.length && !op.ui.alerts.length, [op.ui.errors, op.ui.alerts]);
 console.log(`${counts.pass} passed, ${counts.fail} failed`);

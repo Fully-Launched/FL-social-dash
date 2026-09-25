@@ -274,9 +274,10 @@ chk("all 30 ready to post", (await count("status='ready_to_post'")) === 30);
 
 // ── 7. Posting ──
 op = track(await OP());
-const p0 = $$(op, "#postList > .card")[0];
-chk("Ready to Post: date, both captions, finished video", p0 && /Post \d{4}-\d{2}-\d{2}/.test(p0.textContent) && p0.textContent.includes("Caption") && p0.textContent.includes("On-screen caption") && !!p0.querySelector('a[href="https://drive/fl-final"]'));
-for (let n = 0; n < V.post; n++) await click(btn($$(op, "#postList > .card")[0], "Mark posted"), "post " + n);
+chk("no separate Ready to Post page", !$(op, "#view-post") && !$$(op, ".nav-item").some(n => n.textContent.includes("Ready to Post")));
+const p0 = $$(op, "#todoPostList > .card")[0];
+chk("To Do → Ready to post: date, both captions, finished video", p0 && /Post \d{4}-\d{2}-\d{2}/.test(p0.textContent) && p0.textContent.includes("Caption") && p0.textContent.includes("On-screen caption") && !!p0.querySelector('a[href="https://drive/fl-final"]'));
+for (let n = 0; n < V.post; n++) await click(btn($$(op, "#todoPostList > .card")[0], "Mark posted"), "post " + n);
 chk(`${V.post} posted`, (await count("status='posted'")) === V.post);
 
 // ── 8. Premium client: we film, they approve ideas ──
