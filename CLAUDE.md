@@ -458,8 +458,10 @@ back one piece at a time:
 
 ### Operator dashboard — `/` → `/operator/dashboard.html`
 
-Nav: **To Do** (ideas sent back with suggestions; ready for an editor;
-finished edits to review; waiting on the client; with an editor) →
+Nav: **To Do** (every video by stage, one tab each plus All, with counts:
+sent back with suggestions → waiting on client → ready for an editor → with
+an editor → edits to review → ready to post; a client dropdown beside the
+tabs, synced with the top chips) →
 **Content Calendar** (every video on its post date, plus "Add ideas with
 Claude" and "+ New idea") → **Ready to Post** → **Clients** (name, portal
 address, who films, raw footage folder, finished video folder) → **Editor
