@@ -18,7 +18,6 @@
   <div class="sync-badge" id="authUserBadge"></div>
   <div class="nav-item active" data-view="todo"><span class="ic">🛎️</span> To Do</div>
   <div class="nav-item" data-view="calendar"><span class="ic">📅</span> Content Calendar</div>
-  <div class="nav-item" data-view="post"><span class="ic">📣</span> Ready to Post</div>
   <div class="nav-item" data-view="clients"><span class="ic">👥</span> Clients</div>
   <a class="nav-item" href="/editor/dashboard.html" target="_blank" rel="noopener" style="text-decoration:none"><span class="ic">🎞️</span> Editor portal ↗</a>
 </nav>
@@ -31,6 +30,10 @@
 
   <section class="view active" id="view-todo">
     <div class="page-head"><h1>To Do</h1><p>Every video, by the stage it's in. Pick a stage, or All. Click any title to see the whole card.</p></div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      <button class="primary" onclick="openBulkAdd(null)">📋 Add ideas with Claude</button>
+      <button onclick="openVideoForm(null)">+ New idea</button>
+    </div>
     <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
       <label for="todoClient" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--sub)">Client</label>
       <select id="todoClient" style="width:auto;min-width:200px"></select>
@@ -53,9 +56,6 @@
     <div class="card"><div class="cal-grid" id="calGrid"></div></div>
   </section>
 
-  <section class="view" id="view-post">
-    <div class="page-head"><h1>Ready to Post</h1><p>Approved by the client, in posting order. Post it, then mark it posted.</p></div>
-    <div class="card"><div id="postList"></div></div>
   </section>
 
   <section class="view" id="view-clients">
@@ -83,7 +83,7 @@
 //
 // The flow: ideas (from Claude) → client approves → client films and
 // uploads, or Tait films → editor → Tait reviews the edit and adds the
-// caption → client approves for posting → Ready to Post → posted.
+// caption → client approves for posting → ready to post (To Do) → posted.
 
 let ME = null;               // this operator's social_operators row
 let CLIENTS = [];            // [{ id, slug, name, clientSystem, driveFolders }]
@@ -588,7 +588,10 @@ const TODO_STAGES = [
 ];
 let todoStage = "all";
 function renderTodo() {
-  const vids = filteredVideos().slice().sort(byPostDate);
+  // Within each stage, grouped by status in pipeline order (so the status
+  // labels line up), then by post date.
+  const rank = s => { const i = STATUS_ORDER.indexOf(s); return i === -1 ? 99 : i; };
+  const vids = filteredVideos().slice().sort((a, b) => rank(a.video.status) - rank(b.video.status) || byPostDate(a, b));
   const inStage = key => vids.filter(TODO_STAGES.find(s => s.key === key).match);
 
   // Tabs, with counts for the client(s) shown.
@@ -630,7 +633,7 @@ function renderCalendar() {
 
 // ---------- Ready to post ----------
 // One ready-to-post video: post date, both captions, the finished video,
-// and Mark posted. Used on Ready to Post and in To Do's Ready to post stage.
+// and Mark posted. Used in To Do's Ready to post stage.
 function postCardHtml(x) {
     const v = x.video, watch = finishedVideoLink(v, x.client.driveFolders);
     return `<div class="card" style="margin-bottom:10px">
@@ -648,10 +651,7 @@ function postCardHtml(x) {
       </div>
     </div>`;
 }
-function renderPost() {
-  const ready = filteredVideos().filter(x => x.video.status === "ready_to_post").sort(byPostDate);
-  document.getElementById("postList").innerHTML = ready.length ? ready.map(postCardHtml).join("") : '<div class="empty">Nothing ready to post right now.</div>';
-}
+
 async function copyCaption(id, btn) {
   const x = findVideo(id);
   try { await navigator.clipboard.writeText(x.video.caption || ""); btn.textContent = "Copied ✓"; }
@@ -781,7 +781,7 @@ async function inviteClient(clientId, btn) {
 
 function renderAll() {
   renderGlobalClientFilter();
-  renderTodo(); renderCalendar(); renderPost(); renderAllClients();
+  renderTodo(); renderCalendar(); renderAllClients();
 }
 
 // Only a social_operators login gets past the gate — never an editor or

@@ -453,7 +453,7 @@ back one piece at a time:
    card; it goes back to the editor and shows in the same Revisions needed
    section). Every client step ends in a short thank-you message, never a
    browser pop-up.
-7. Ready to Post lists it by post date with the caption and finished video;
+7. To Do's Ready to post stage lists it by post date with the captions and finished video;
    whoever posts marks it posted. Posting stays manual (principle 6).
 
 ### Operator dashboard — `/` → `/operator/dashboard.html`
@@ -461,9 +461,11 @@ back one piece at a time:
 Nav: **To Do** (every video by stage, one tab each plus All, with counts:
 sent back with suggestions → waiting on client → ready for an editor → with
 an editor → edits to review → ready to post; a client dropdown beside the
-tabs, synced with the top chips) →
+tabs, synced with the top chips; "Add ideas with Claude" and "+ New idea"
+buttons; within each stage, videos grouped by status in pipeline order,
+then by post date) →
 **Content Calendar** (every video on its post date, plus "Add ideas with
-Claude" and "+ New idea") → **Ready to Post** → **Clients** (name, portal
+Claude" and "+ New idea", also on To Do) → **Clients** (name, portal
 address, who films, raw footage folder, finished video folder) → **Editor
 portal ↗**. A client filter across the top narrows every page.
 
@@ -572,7 +574,7 @@ As of 2026-09-23:
 | Editor dashboard (brief, footage, brand voice, deliver) | ✅ Live, scoped per editor by RLS. |
 | Owner review (gate 2), client review (gate 3) | ✅ Live. |
 | 7-day edit-to-post rule | ✅ As a suggestion when entering a post date; always editable. |
-| Posting database with caption | ✅ Ready to Post, with copy-caption. Posting stays manual (principle 6). |
+| Posting database with caption | ✅ To Do → Ready to post, with copy-caption. Posting stays manual (principle 6). |
 | Analytics / monthly performance loop | ❌ Not built — off the client nav. |
 | Competitors + Poppy on the client portal | ❌ Not built. |
 
