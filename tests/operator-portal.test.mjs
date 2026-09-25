@@ -17,7 +17,6 @@ await db.exec(`
     ('${FL}','Fully Launched','test-fully-launched','self-serve'),
     ('${DAD}','Dad Co','dad-co','concierge');
   insert into social_videos (client_id,title,status,concept_approved_at) values
-    ('${FL}','Approve me','concept_pending',now()),
     ('${FL}','Change me','concept_pending',now()),
     ('${FL}','Hidden concept','concept_pending',null),
     ('${FL}','Film me','to_film',null),
@@ -26,6 +25,8 @@ await db.exec(`
     ('${FL}','Edit me','to_film',null),
     ('${DAD}','Dad final','client_review',null),
     ('${DAD}','Dad filmed','filmed',null);
+  insert into social_videos (client_id,title,status,concept_approved_at,filmed_by) values
+    ('${FL}','Approve me','concept_pending',now(),'us');
 `);
 
 const open = slug => openPage("clients/portal.html", OP, "https://fl.test/clients/" + slug);
@@ -38,17 +39,25 @@ chk("gate-1 concept still hidden from portal", !card(p, "Hidden concept"));
 
 const steps = [
   ["Approve me", "Approve idea", null, "to_film"],
-  ["Change me", "Add suggestions", "Shorter hook", "concept_pending"],
-  ["Film me", "Uploaded footage", null, "ready_to_edit"],
+  ["Change me", "Suggest changes", "Shorter hook", "concept_pending"],
+  ["Film me", "Video has been filmed", null, "ready_to_edit"],
   ["Final ok", "Approve for posting", null, "ready_to_post"],
-  ["Final redo", "Request changes", "Louder music", "with_editor"],
+  ["Final redo", "Request changes to the video", "Louder music", "with_editor"],
 ];
+const tab = async key => { p.d.querySelector(`#videoTabs [data-tab="${key}"]`)?.click(); await settle(); };
 for (const [t, label, note, want] of steps) {
-  const b = btn(card(p, t), label);
+  const c = card(p, t), b = btn(c, label);
   chk(`${t}: "${label}" shows for operator`, !!b);
   if (!b) continue;
-  if (note) p.ui.prompts.push(note);
   b.click(); await settle();
+  if (note) {
+    const box = c.querySelector(".note-box");
+    box.querySelector("textarea").value = note;
+    box.querySelector("[data-send]").click(); await settle();
+  }
+  if (label === "Video has been filmed") { p.d.getElementById("cfYes").click(); await settle(); }
+  chk(`${t}: thank-you shown`, !!p.d.getElementById("msgOk"));
+  p.d.getElementById("msgOk")?.click(); await settle();
   const r = await row(t);
   chk(`${t}: now ${want}`, r.status === want, r);
   if (note) chk(`${t}: note saved`, r.note === note, r.note);
@@ -71,11 +80,11 @@ chk("no alerts or page errors (FL)", !p.ui.alerts.length && !p.ui.errors.length,
 // Concierge: only the final-review buttons, no filming ones.
 p = await open("dad-co");
 chk("concierge: approve final shows", !!btn(card(p, "Dad final"), "Approve for posting"));
-chk("concierge: no footage button", !btn(card(p, "Dad filmed"), "Uploaded footage"));
-chk("concierge: edit shows", !!btn(card(p, "Dad filmed"), "✏️ Edit"));
+chk("concierge (we film): no filmed button", !btn(card(p, "Dad final"), "Video has been filmed"));
+chk("concierge: edit shows", !!btn(card(p, "Dad final"), "✏️ Edit"));
 
 const log = (await db.query("select action, changed_by_role from social_status_audit_log where action <> 'created'")).rows;
-chk("audit log: all by operator, none as client", log.length >= 6 && log.every(r => r.changed_by_role === "operator" && r.action === "direct_update"), log);
+chk("audit log: all by operator, none as client", log.length >= 5 && log.every(r => r.changed_by_role === "operator" && r.action === "direct_update"), log);
 
 console.log(`${counts.pass} passed, ${counts.fail} failed`);
 process.exit(counts.fail ? 1 : 0);

@@ -88,7 +88,15 @@ let EDITOR_BY_ID = {};
 let globalClientFilter = "all";   // "all" or a client id
 
 // self-serve: the client films. concierge: Tait films.
-const WHO_FILMS = { "self-serve": "Client films", "concierge": "I film" };
+// A client's default for new videos; each video can override it (filmed_by).
+const WHO_FILMS = { "self-serve": "Client films", "concierge": "We film" };
+const FILMED_BY_LABEL = { client: "Client films it", us: "We film it" };
+
+// Invites send a sign-in link to the client's contact email; opening it
+// links that login to the client (social_claim_client_invite, migration
+// 006). OFF until the CRM security fix — see CLAUDE.md → Auth: a client
+// login could otherwise read the CRM's tables. Flip to true once it's done.
+const INVITES_ENABLED = false;
 
 // ---------- data ----------
 async function loadLiveData() {
@@ -108,6 +116,7 @@ async function loadLiveData() {
     const f = folderByClient[c.id] || {};
     return {
       id: c.id, slug: c.slug, name: c.name, displayName: c.name, clientSystem: c.client_system,
+      contactName: c.contact_name, contactPhone: c.contact_phone, contactEmail: c.contact_email,
       driveFolders: { footageUploads: f.footage_uploads, finalEdits: f.final_edits, brandVoice: f.brand_voice },
     };
   });
@@ -141,15 +150,13 @@ async function updateVideo(id, patch) {
   return true;
 }
 
-// A new idea's starting point. The client sees it right away: clients who
-// film start at "idea" already sent to them (gate-1 columns stamped here);
-// clients Tait films for skip idea approval and start at "to film".
-function newVideoStart(clientId) {
-  const c = CLIENT_BY_ID[clientId];
-  return c && c.clientSystem === "concierge"
-    ? { status: "to_film" }
-    : { status: "concept_pending", concept_approved_by: ME.id, concept_approved_at: new Date().toISOString() };
+// A new idea's starting point: the client sees it right away (gate-1
+// columns stamped here). Who films it comes from the form, or the
+// client's default (filled in by the database when left blank).
+function newVideoStart() {
+  return { status: "concept_pending", concept_approved_by: ME.id, concept_approved_at: new Date().toISOString() };
 }
+const filmedByX = x => filmedByOf(x.video, x.client.clientSystem);
 
 // ---------- actions ----------
 async function sendToClient(id) {
@@ -240,6 +247,14 @@ async function approveForClient(id, toStatus, what) {
   if (!confirm(`Approve this ${what} on ${x.client.name}'s behalf?`)) return;
   await updateVideo(id, { status: toStatus });
 }
+// For a client who films: they told Tait the footage is in. Same move and
+// dates as their own "Video has been filmed" (submit_footage).
+async function markFilmedForClient(id) {
+  const x = findVideo(id);
+  if (!x) return;
+  if (!confirm(`Mark "${x.video.title}" as filmed for ${x.client.name}? It goes to editing (edit due in 7 days).`)) return;
+  await updateVideo(id, Object.assign({ status: "ready_to_edit" }, footageDates(x.video)));
+}
 async function markPosted(id) {
   if (!confirm("Mark this video as posted?")) return;
   await updateVideo(id, { status: "posted" });
@@ -270,7 +285,9 @@ function editorSelect(selected) {
     .map(e => `<option value="${e.id}" ${e.id === selected ? "selected" : ""}>${escapeHtml(e.name)}</option>`).join("");
   return `<select style="font-size:0.82rem;padding:5px 6px"><option value="">Pick editor…</option>${opts}</select>`;
 }
-function isOperatorFilmed(x) { return x.client.clientSystem === "concierge" && ["to_film", "filmed"].includes(x.video.status); }
+// "We film" videos the client has approved: Tait films them (or already
+// has the footage) and sends them to the editor.
+function isOperatorFilmed(x) { return filmedByX(x) === "us" && ["to_film", "filmed"].includes(x.video.status); }
 function isReadyForEditor(x) { return x.video.status === "ready_to_edit" || isOperatorFilmed(x); }
 
 // The buttons each status gets, wherever the video shows up.
@@ -278,8 +295,11 @@ function operatorActionsHtml(x) {
   const v = x.video, id = v.id;
   const out = [];
   if (videoActionsFor(v, "operator", x.client.clientSystem).includes("approve_concept_owner")) out.push(smallBtn("Send to client", `sendToClient('${id}')`, "primary"));
-  if (x.client.clientSystem === "self-serve" && v.status === "concept_pending" && v.conceptApprovedAt) {
+  if (filmedByX(x) === "us" && v.status === "concept_pending" && v.conceptApprovedAt) {
     out.push(smallBtn("Approve for client", `approveForClient('${id}', 'to_film', 'idea')`, "primary"));
+  }
+  if (filmedByX(x) === "client" && (["to_film", "filmed"].includes(v.status) || (v.status === "concept_pending" && v.conceptApprovedAt))) {
+    out.push(smallBtn("Mark filmed for client", `markFilmedForClient('${id}')`, "primary"));
   }
   if (isOperatorFilmed(x) && x.client.driveFolders.footageUploads) {
     out.push(`<a class="btn" style="font-size:0.78rem;padding:5px 10px" href="${escapeHtml(x.client.driveFolders.footageUploads)}" target="_blank" rel="noopener">📁 Raw footage</a>`);
@@ -347,6 +367,11 @@ function openVideoForm(id, presetClientId) {
       ${dateField("dueToEdit", "Edit by", v.dueToEdit)}
       <div>${lbl("Editor")}<select data-f="editorId" style="width:100%;margin-bottom:10px">${editorOpts}</select></div>
     </div>
+    ${lbl("Who films this video")}<select data-f="filmedBy" style="width:100%;margin-bottom:10px">
+      <option value="" ${!v.filmedBy ? "selected" : ""}>Client's default${x ? " (" + escapeHtml(FILMED_BY_LABEL[filmedByOf({}, x.client.clientSystem)]) + ")" : ""}</option>
+      <option value="client" ${v.filmedBy === "client" ? "selected" : ""}>The client films it — they upload footage and tap "Video has been filmed"</option>
+      <option value="us" ${v.filmedBy === "us" ? "selected" : ""}>We film it / already have the footage — the client approves the idea</option>
+    </select>
     <h3 style="font-size:0.85rem;margin:14px 0 8px;color:var(--sub)">The idea (the client sees this)</h3>
     ${textField("hook", "Hook", v.hook, 2)}
     ${textField("body", "Script", v.body, 4)}
@@ -393,7 +418,7 @@ function openVideoForm(id, presetClientId) {
     const row = videoFieldsToRow(fields);
     const res = x
       ? await sbClient.from("social_videos").update(row).eq("id", x.video.id).select("id")
-      : await sbClient.from("social_videos").insert(Object.assign(row, newVideoStart(fields.clientId))).select("id");
+      : await sbClient.from("social_videos").insert(Object.assign(row, newVideoStart())).select("id");
     saveBtn.disabled = false; saveBtn.textContent = x ? "Save changes" : "Add idea";
     if (res.error) { err.textContent = res.error.message; return; }
     if (!res.data || !res.data.length) { err.textContent = "Nothing was saved — that video may have been deleted."; return; }
@@ -423,6 +448,7 @@ const BULK_PROMPT = `Turn the content plan we just made into a JSON array I can 
 - "outline": a bullet-point list (one string, one "- " line per point) of everything the video covers, in order — for when the client would rather talk through points than read the script
 - "filmingDirection": plain-language instructions for the client on how to film it
 - "editorInstructions": how the editor should cut it
+- "filmedBy": "client" if the client films it, "us" if we film it or already have the footage (leave out to use the client's usual)
 - "caption": the post caption
 - "dueToFilm": "YYYY-MM-DD" — when it should be filmed
 - "dueToEdit": "YYYY-MM-DD" — when the edit should be done (usually 7 days before posting)
@@ -461,6 +487,7 @@ function parseBulk(text) {
       filmingDirection: o.filmingDirection || o.filmingInstructions || o.filming_instructions || null,
       editorBrief: { instructions: o.editorInstructions || o.editor_instructions || null },
       caption: o.caption || null, ...dates,
+      filmedBy: ["client", "us"].includes(o.filmedBy) ? o.filmedBy : null,
     });
   });
   return { rows, problems };
@@ -498,7 +525,7 @@ function openBulkAdd(presetClientId) {
   save.onclick = async () => {
     const clientId = box.querySelector("#bkClient").value;
     save.disabled = true; save.textContent = "Adding…";
-    const rows = parsed.rows.map(r => Object.assign(videoFieldsToRow(Object.assign({ clientId }, r)), newVideoStart(clientId)));
+    const rows = parsed.rows.map(r => Object.assign(videoFieldsToRow(Object.assign({ clientId }, r)), newVideoStart()));
     const { data, error } = await sbClient.from("social_videos").insert(rows).select("id");
     if (error) { err.textContent = error.message; save.disabled = false; save.textContent = "Add ideas"; return; }
     closeVideoModal();
@@ -532,9 +559,9 @@ function renderGlobalClientFilter() {
 
 // ---------- To Do ----------
 function isWaitingOnClient(x) {
-  const v = x.video, self = x.client.clientSystem === "self-serve";
-  return (self && v.status === "concept_pending" && v.conceptApprovedAt)
-    || (self && ["to_film","filmed"].includes(v.status))
+  const v = x.video;
+  return (v.status === "concept_pending" && v.conceptApprovedAt)
+    || (filmedByX(x) === "client" && ["to_film","filmed"].includes(v.status))
     || v.status === "client_review";
 }
 function listOrEmpty(elId, items, rightFn, emptyText) {
@@ -604,8 +631,12 @@ function renderAllClients() {
     const count = VIDEOS.filter(x => x.client.id === c.id).length;
     return `<div class="row"><div class="left"><b>${escapeHtml(c.name)}</b>
       <div class="meta">/clients/${escapeHtml(c.slug)} · ${escapeHtml(WHO_FILMS[c.clientSystem] || c.clientSystem)} · ${count} video(s)</div>
-      ${missing.length ? `<div class="meta" style="color:var(--red)">Missing: ${missing.join(", ")}</div>` : ""}</div>
-      <div><a class="btn primary" style="margin-right:6px;font-size:0.75rem;padding:4px 9px" href="/clients/${encodeURIComponent(c.slug)}" target="_blank" rel="noopener">Open portal</a>
+      ${missing.length ? `<div class="meta" style="color:var(--red)">Missing: ${missing.join(", ")}</div>` : ""}
+      <div class="meta">${c.contactName || c.contactEmail || c.contactPhone
+        ? "Contact: " + [c.contactName, c.contactEmail, c.contactPhone].filter(Boolean).map(escapeHtml).join(" · ")
+        : `<span style="color:var(--red)">No contact yet</span>`}</div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><a class="btn primary" style="font-size:0.75rem;padding:4px 9px" href="/clients/${encodeURIComponent(c.slug)}" target="_blank" rel="noopener">Open portal</a>
+      <button style="font-size:0.75rem;padding:4px 9px" onclick="inviteClient('${c.id}', this)">✉️ Invite to portal</button>
       <button style="font-size:0.75rem;padding:4px 9px" onclick="openClientPanel('${c.id}')">Edit</button></div></div>`;
   }).join("");
 }
@@ -626,11 +657,16 @@ function openClientPanel(clientId) {
   const f = c.driveFolders;
   panel.innerHTML = `
     <h2 style="font-size:1rem;margin:0 0 14px">${clientId ? "Edit " + escapeHtml(c.name) : "New client"}</h2>
-    ${lbl("Name")}<input type="text" id="cpName" value="${escapeHtml(c.name)}" style="width:100%;margin-bottom:10px">
+    ${lbl("Client name")}<input type="text" id="cpName" value="${escapeHtml(c.name)}" style="width:100%;margin-bottom:10px">
     ${clientId ? "" : `${lbl("Portal address (/clients/…)")}<input type="text" id="cpSlug" style="width:100%;margin-bottom:10px">`}
-    ${lbl("Who films")}<select id="cpSystem" style="width:100%;margin-bottom:10px">
-      <option value="self-serve" ${c.clientSystem === "self-serve" ? "selected" : ""}>The client films (they approve ideas and upload footage)</option>
-      <option value="concierge" ${c.clientSystem === "concierge" ? "selected" : ""}>I film (they only approve finished videos)</option>
+    <div class="grid-2">
+      <div>${lbl("Contact name")}<input type="text" id="cpContactName" value="${escapeHtml(c.contactName || "")}" style="width:100%;margin-bottom:10px"></div>
+      <div>${lbl("Contact phone")}<input type="text" id="cpContactPhone" value="${escapeHtml(c.contactPhone || "")}" style="width:100%;margin-bottom:10px"></div>
+    </div>
+    ${lbl("Contact email (this is who gets invited to the portal)")}<input type="email" id="cpContactEmail" value="${escapeHtml(c.contactEmail || "")}" style="width:100%;margin-bottom:10px">
+    ${lbl("Who usually films (each video can be changed)")}<select id="cpSystem" style="width:100%;margin-bottom:10px">
+      <option value="self-serve" ${c.clientSystem === "self-serve" ? "selected" : ""}>The client films — they film ideas and upload the footage</option>
+      <option value="concierge" ${c.clientSystem === "concierge" ? "selected" : ""}>We film — they approve ideas; we film or already have the footage</option>
     </select>
     ${lbl("Raw footage folder (Google Drive link)")}<input type="text" id="cpFootage" value="${escapeHtml(f.footageUploads || "")}" style="width:100%;margin-bottom:10px">
     ${lbl("Finished video folder (Google Drive link)")}<input type="text" id="cpFinal" value="${escapeHtml(f.finalEdits || "")}" style="width:100%;margin-bottom:10px">
@@ -653,17 +689,23 @@ function openClientPanel(clientId) {
     errEl.textContent = "";
     const name = nameEl.value.trim();
     const client_system = document.getElementById("cpSystem").value;
+    const contact = {
+      contact_name: document.getElementById("cpContactName").value.trim() || null,
+      contact_phone: document.getElementById("cpContactPhone").value.trim() || null,
+      contact_email: document.getElementById("cpContactEmail").value.trim().toLowerCase() || null,
+    };
     if (!name) { errEl.textContent = "Name can't be empty."; return; }
+    if (contact.contact_email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(contact.contact_email)) { errEl.textContent = "That contact email doesn't look right."; return; }
     let id = clientId;
     e.target.disabled = true;
     if (id) {
-      const { error } = await sbClient.from("social_clients").update({ name, client_system }).eq("id", id);
-      if (error) { errEl.textContent = error.message; e.target.disabled = false; return; }
+      const { error } = await sbClient.from("social_clients").update(Object.assign({ name, client_system }, contact)).eq("id", id);
+      if (error) { errEl.textContent = error.code === "23505" ? "Another client already uses that contact email." : error.message; e.target.disabled = false; return; }
     } else {
       const slug = slugEl.value.trim();
       if (!/^[a-z0-9-]+$/.test(slug)) { errEl.textContent = "The portal address can only use lowercase letters, digits, and hyphens."; e.target.disabled = false; return; }
-      const { data, error } = await sbClient.from("social_clients").insert({ name, slug, client_system }).select("id");
-      if (error) { errEl.textContent = error.code === "23505" ? "That portal address is taken — pick another." : error.message; e.target.disabled = false; return; }
+      const { data, error } = await sbClient.from("social_clients").insert(Object.assign({ name, slug, client_system }, contact)).select("id");
+      if (error) { errEl.textContent = error.code === "23505" ? "That portal address or contact email is already used by another client." : error.message; e.target.disabled = false; return; }
       id = data[0].id;
     }
     const folderRes = await sbClient.from("social_drive_folder_links").upsert({
@@ -679,6 +721,26 @@ function openClientPanel(clientId) {
   };
 }
 document.getElementById("newClientBtn").onclick = () => openClientPanel(null);
+
+async function inviteClient(clientId, btn) {
+  const c = CLIENT_BY_ID[clientId];
+  if (!c) return;
+  if (!c.contactEmail) { alert(`Add ${c.name}'s contact email first (Edit).`); return; }
+  if (!INVITES_ENABLED) {
+    openModal(`<h2>Invites are switched off for now</h2>
+      <p style="line-height:1.55">When ${escapeHtml(c.contactEmail)} is invited, they get a login to this Supabase project, and right now the CRM's tables let <b>any</b> login read and change them, including financials. Invites turn on once your cofounder tightens the CRM's security (see CLAUDE.md → Auth).</p>
+      <p class="meta">Until then, open ${escapeHtml(c.name)}'s portal yourself and do things for them. Everything is ready: their contact email is saved, and they'll be linked to this portal the first time they sign in.</p>
+      <div class="modal-actions"><button class="primary" onclick="closeVideoModal()">Got it</button></div>`);
+    return;
+  }
+  if (!confirm(`Send a portal invite to ${c.contactEmail}? They'll get an email with a link that signs them in to ${c.name}'s portal.`)) return;
+  btn.disabled = true;
+  const { error } = await sbClient.auth.signInWithOtp({ email: c.contactEmail,
+    options: { shouldCreateUser: true, emailRedirectTo: location.origin + "/clients/" + encodeURIComponent(c.slug) } });
+  btn.disabled = false;
+  alert(error ? "Couldn't send the invite: " + error.message
+    : `Invite sent to ${c.contactEmail}. When they open the link, they land in ${c.name}'s portal. Later, they can sign in again with "Email me a sign-in link".`);
+}
 
 function renderAll() {
   renderGlobalClientFilter();

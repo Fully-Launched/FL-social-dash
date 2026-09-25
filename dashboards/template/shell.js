@@ -130,7 +130,7 @@ const VIDEO_COLUMNS = {
   filmingDirection: "filming_instructions", caption: "caption", note: "note",
   status: "status", editorId: "editor_id", editorBrief: "editor_brief",
   dueToFilm: "due_to_film", dueToEdit: "due_to_edit", postDate: "post_date",
-  finalCutUrl: "final_cut_url", onScreenCaption: "on_screen_caption",
+  finalCutUrl: "final_cut_url", onScreenCaption: "on_screen_caption", filmedBy: "filmed_by",
   conceptApprovedBy: "concept_approved_by", conceptApprovedAt: "concept_approved_at",
   createdAt: "created_at", updatedAt: "updated_at",
 };
@@ -139,7 +139,7 @@ const VIDEO_COLUMNS = {
 // Gate-1 columns are deliberately absent — use the approve_concept action,
 // so every approval is stamped and logged.
 const VIDEO_WRITABLE = ["clientId","title","platform","hook","overview","outline","body","concept",
-  "filmingDirection","caption","note","status","editorId","editorBrief","dueToFilm","dueToEdit","postDate","finalCutUrl","onScreenCaption"];
+  "filmingDirection","caption","note","status","editorId","editorBrief","dueToFilm","dueToEdit","postDate","finalCutUrl","onScreenCaption","filmedBy"];
 
 function videoFromRow(row) {
   const v = {};
@@ -162,45 +162,67 @@ function videoFieldsToRow(fields) {
 }
 
 // ---------- status changes ----------
-// Mirrors the transition table in
-// supabase/migrations/003_social_videos_write_path.sql — the database is
-// what actually enforces these; this only decides which buttons to show.
-// Keep the two in step. Operators move every other status by writing
-// `status` directly (full RLS access), so only their gate-1 action is here.
+// Mirrors the transition table in supabase/migrations/006_client_journey.sql
+// — the database is what actually enforces these; this only decides which
+// buttons to show. Keep the two in step. Operators move every other status
+// by writing `status` directly (full RLS access), so only their gate-1
+// action is here.
+//
+// filmedBy: the video's filmed_by this action needs ("client" = the client
+// films it and submits footage; "us" = Tait films it / already has the
+// footage, and the client approves the idea). Absent = either.
 const VIDEO_ACTIONS = {
   approve_concept_owner:   { role: "operator", rpc: "social_operator_approve_concept", from: ["concept_pending"], to: "concept_pending", label: "Send to client", needsConceptUnapproved: true },
-  approve_concept:         { role: "client", from: ["concept_pending"], to: "to_film",         label: "Approve idea", selfServeOnly: true },
-  request_concept_changes: { role: "client", from: ["concept_pending"], to: "concept_pending", label: "Add suggestions", selfServeOnly: true, needsNote: true, notePrompt: "What would you change about this idea?" },
-  mark_filmed:             { role: "client", from: ["to_film"],       to: "filmed",        label: "Uploaded footage", selfServeOnly: true },
-  mark_ready_to_edit:      { role: "client", from: ["filmed"],        to: "ready_to_edit", label: "Uploaded footage", selfServeOnly: true },
+  submit_footage:          { role: "client", from: ["concept_pending", "to_film", "filmed"], to: "ready_to_edit", label: "Video has been filmed", filmedBy: "client" },
+  approve_concept:         { role: "client", from: ["concept_pending"], to: "to_film",         label: "Approve idea", filmedBy: "us" },
+  request_concept_changes: { role: "client", from: ["concept_pending"], to: "concept_pending", label: "Suggest changes", needsNote: true, notePrompt: "What would you change about this idea?" },
   approve_final:           { role: "client", from: ["client_review"], to: "ready_to_post", label: "Approve for posting" },
-  request_revisions:       { role: "client", from: ["client_review"], to: "with_editor",   label: "Request changes", needsNote: true, notePrompt: "What needs to change?", destructive: true },
+  request_revisions:       { role: "client", from: ["client_review"], to: "with_editor",   label: "Request changes to the video", needsNote: true, notePrompt: "What should change in the video?", destructive: true },
   mark_delivered:          { role: "editor", rpc: "social_editor_mark_delivered", from: ["with_editor"], to: "in_review", label: "Finished — send to operator" },
 };
 
+// Who films a video: its own filmed_by, else its client's default
+// (self-serve → the client, concierge → us).
+function filmedByOf(video, clientSystem) {
+  return video.filmedBy || (clientSystem === "concierge" ? "us" : "client");
+}
+
 // Action keys `role` may take on `video` right now. clientSystem is the
-// social_clients.client_system of the video's client.
+// social_clients.client_system of the video's client (the fallback for
+// videos made before filmed_by existed).
 function videoActionsFor(video, role, clientSystem) {
+  const filmedBy = filmedByOf(video, clientSystem);
   return Object.keys(VIDEO_ACTIONS).filter(key => {
     const a = VIDEO_ACTIONS[key];
     if (a.role !== role || !a.from.includes(video.status)) return false;
-    if (a.selfServeOnly && clientSystem !== "self-serve") return false;
+    if (a.filmedBy && a.filmedBy !== filmedBy) return false;
     if (a.needsConceptUnapproved && video.conceptApprovedAt) return false;
     return true;
   });
 }
 
+// The 7 + 7 rule, same as submit_footage in 006: once the footage is in,
+// the edit is due in 7 days and it posts in 14 — or on the planned post
+// date, if that's later. Used where an operator submits footage directly.
+function footageDates(video) {
+  const edit = addDaysISO(todayISO(), 7), post = addDaysISO(todayISO(), 14);
+  return { dueToEdit: edit, postDate: video.postDate && video.postDate > post ? video.postDate : post };
+}
+
 // Runs one action against Supabase (sbClient comes from auth.js).
-// finalCutUrl only applies to mark_delivered. Resolves
-// to { video } with the updated record, or { error } with the database's
-// message — the database re-checks everything, so a refused move comes back
-// here as an error rather than silently doing nothing.
-async function runVideoAction(actionKey, videoId, note, finalCutUrl) {
+// extra: { caption, onScreenCaption } for approve_final (the client's
+// caption edits). Resolves to { video } with the updated record, or
+// { error } with the database's message — the database re-checks
+// everything, so a refused move comes back here as an error rather than
+// silently doing nothing.
+async function runVideoAction(actionKey, videoId, note, extra) {
   const a = VIDEO_ACTIONS[actionKey];
   if (!a) return { error: "Unknown action: " + actionKey };
+  extra = extra || {};
   const { data, error } = a.rpc
-    ? await sbClient.rpc(a.rpc, actionKey === "mark_delivered" ? { p_video_id: videoId, p_final_cut_url: finalCutUrl || null } : { p_video_id: videoId })
-    : await sbClient.rpc("social_client_video_action", { p_video_id: videoId, p_action: actionKey, p_note: note || null });
+    ? await sbClient.rpc(a.rpc, { p_video_id: videoId })
+    : await sbClient.rpc("social_client_video_action", { p_video_id: videoId, p_action: actionKey, p_note: note || null,
+        p_caption: extra.caption || null, p_on_screen_caption: extra.onScreenCaption || null });
   if (error) return { error: error.message };
   return { video: videoFromRow(data) };
 }
