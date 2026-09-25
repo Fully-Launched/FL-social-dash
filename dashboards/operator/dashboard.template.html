@@ -30,12 +30,18 @@
   <div id="loadError"></div>
 
   <section class="view active" id="view-todo">
-    <div class="page-head"><h1>To Do</h1><p>Everything waiting on you, in order. Click any title to see the whole card.</p></div>
-    <div class="card"><h2>Ideas the client sent back with suggestions <span style="font-weight:400;color:var(--sub);font-size:0.78rem">— edit them, then send them to the client again</span></h2><div id="sendAllWrap"></div><div id="ideasList"></div></div>
-    <div class="card"><h2>Ready for an editor <span style="font-weight:400;color:var(--sub);font-size:0.78rem">— footage the client uploaded, and videos you film</span></h2><div id="toEditorList"></div></div>
-    <div class="card"><h2>Finished edits to review</h2><div id="editsList"></div></div>
-    <div class="card"><h2>Waiting on the client</h2><div id="clientWaitingList"></div></div>
-    <div class="card"><h2>With an editor</h2><div id="withEditorList"></div></div>
+    <div class="page-head"><h1>To Do</h1><p>Every video, by the stage it's in. Pick a stage, or All. Click any title to see the whole card.</p></div>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
+      <label for="todoClient" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--sub)">Client</label>
+      <select id="todoClient" style="width:auto;min-width:200px"></select>
+    </div>
+    <div class="chip-row" id="todoTabs"></div>
+    <div class="card" data-stage="sentBack"><h2>Sent back with suggestions <span style="font-weight:400;color:var(--sub);font-size:0.78rem">— edit them, then send them to the client again</span></h2><div id="sendAllWrap"></div><div id="ideasList"></div></div>
+    <div class="card" data-stage="client"><h2>Waiting on the client <span style="font-weight:400;color:var(--sub);font-size:0.78rem">— ideas to approve, videos to film, finished videos to approve</span></h2><div id="clientWaitingList"></div></div>
+    <div class="card" data-stage="toEditor"><h2>Ready for an editor <span style="font-weight:400;color:var(--sub);font-size:0.78rem">— footage the client uploaded, and videos you film</span></h2><div id="toEditorList"></div></div>
+    <div class="card" data-stage="withEditor"><h2>With an editor</h2><div id="withEditorList"></div></div>
+    <div class="card" data-stage="edits"><h2>Edits to review</h2><div id="editsList"></div></div>
+    <div class="card" data-stage="post"><h2>Ready to post</h2><div id="todoPostList"></div></div>
   </section>
 
   <section class="view" id="view-calendar">
@@ -570,17 +576,45 @@ function listOrEmpty(elId, items, rightFn, emptyText) {
 function unsentIdeas() {
   return filteredVideos().filter(x => x.video.status === "concept_pending" && !x.video.conceptApprovedAt);
 }
+// The stages a video moves through, in order — one tab each (plus All).
+// Posted videos are done, so they're not here.
+const TODO_STAGES = [
+  { key: "sentBack",   label: "Sent back with suggestions", match: x => x.video.status === "concept_pending" && !x.video.conceptApprovedAt },
+  { key: "client",     label: "Waiting on client",          match: x => isWaitingOnClient(x) },
+  { key: "toEditor",   label: "Ready for an editor",        match: x => isReadyForEditor(x) },
+  { key: "withEditor", label: "With an editor",             match: x => x.video.status === "with_editor" },
+  { key: "edits",      label: "Edits to review",            match: x => x.video.status === "in_review" },
+  { key: "post",       label: "Ready to post",              match: x => x.video.status === "ready_to_post" },
+];
+let todoStage = "all";
 function renderTodo() {
   const vids = filteredVideos().slice().sort(byPostDate);
-  const unsent = unsentIdeas();
+  const inStage = key => vids.filter(TODO_STAGES.find(s => s.key === key).match);
+
+  // Tabs, with counts for the client(s) shown.
+  const tabs = [{ key: "all", label: "All", n: TODO_STAGES.reduce((t, s) => t + inStage(s.key).length, 0) },
+    ...TODO_STAGES.map(s => ({ key: s.key, label: s.label, n: inStage(s.key).length }))];
+  document.getElementById("todoTabs").innerHTML = tabs.map(t =>
+    `<div class="chip ${t.key === todoStage ? "active" : ""}" data-stage-tab="${t.key}">${escapeHtml(t.label)} (${t.n})</div>`).join("");
+  document.querySelectorAll("#todoTabs .chip").forEach(c => c.onclick = () => { todoStage = c.dataset.stageTab; renderTodo(); });
+  document.querySelectorAll("#view-todo [data-stage]").forEach(el => { el.style.display = todoStage === "all" || el.dataset.stage === todoStage ? "" : "none"; });
+
+  // Client picker — the same filter as the chips at the top of every page.
+  document.getElementById("todoClient").innerHTML = [{ id: "all", name: "All clients" }, ...CLIENTS]
+    .map(c => `<option value="${c.id}" ${c.id === globalClientFilter ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("");
+
+  const unsent = inStage("sentBack");
   document.getElementById("sendAllWrap").innerHTML = unsent.length > 1
     ? `<div style="margin-bottom:10px">${smallBtn(`Send all ${unsent.length} to the client`, "sendAllToClient(this)", "primary")}</div>` : "";
   listOrEmpty("ideasList", unsent, x => smallBtn("✏️ Edit", `openVideoForm('${x.video.id}')`) + operatorActionsHtml(x), "Nothing sent back.");
-  listOrEmpty("toEditorList", vids.filter(isReadyForEditor), x => operatorActionsHtml(x), "Nothing waiting for an editor.");
-  listOrEmpty("editsList", vids.filter(x => x.video.status === "in_review"), x => operatorActionsHtml(x), "No edits waiting.");
-  listOrEmpty("clientWaitingList", vids.filter(isWaitingOnClient), x => operatorActionsHtml(x) + statusBadge(x.video.status, STATUS_LABEL), "Nothing waiting on a client.");
-  listOrEmpty("withEditorList", vids.filter(x => x.video.status === "with_editor"), null, "Nothing with an editor.");
+  listOrEmpty("clientWaitingList", inStage("client"), x => operatorActionsHtml(x) + statusBadge(x.video.status, STATUS_LABEL), "Nothing waiting on a client.");
+  listOrEmpty("toEditorList", inStage("toEditor"), x => operatorActionsHtml(x), "Nothing waiting for an editor.");
+  listOrEmpty("withEditorList", inStage("withEditor"), x => (x.video.editorId
+    ? `<a class="btn" style="font-size:0.78rem;padding:5px 10px" href="/editor/dashboard.html?editor=${encodeURIComponent(x.video.editorId)}" target="_blank" rel="noopener">Open editor portal</a>` : "") + statusBadge(x.video.status, STATUS_LABEL), "Nothing with an editor.");
+  listOrEmpty("editsList", inStage("edits"), x => operatorActionsHtml(x), "No edits waiting.");
+  document.getElementById("todoPostList").innerHTML = inStage("post").map(postCardHtml).join("") || '<div class="empty">Nothing ready to post right now.</div>';
 }
+document.getElementById("todoClient").onchange = e => { globalClientFilter = e.target.value; renderAll(); };
 
 // ---------- Calendar ----------
 const calState = { offset: 0 };
@@ -595,9 +629,9 @@ function renderCalendar() {
 }
 
 // ---------- Ready to post ----------
-function renderPost() {
-  const ready = filteredVideos().filter(x => x.video.status === "ready_to_post").sort(byPostDate);
-  document.getElementById("postList").innerHTML = ready.length ? ready.map(x => {
+// One ready-to-post video: post date, both captions, the finished video,
+// and Mark posted. Used on Ready to Post and in To Do's Ready to post stage.
+function postCardHtml(x) {
     const v = x.video, watch = finishedVideoLink(v, x.client.driveFolders);
     return `<div class="card" style="margin-bottom:10px">
       <div class="row" style="border:none;padding:0">
@@ -613,7 +647,10 @@ function renderPost() {
         ${smallBtn("Mark posted", `markPosted('${v.id}')`, "primary")}
       </div>
     </div>`;
-  }).join("") : '<div class="empty">Nothing ready to post right now.</div>';
+}
+function renderPost() {
+  const ready = filteredVideos().filter(x => x.video.status === "ready_to_post").sort(byPostDate);
+  document.getElementById("postList").innerHTML = ready.length ? ready.map(postCardHtml).join("") : '<div class="empty">Nothing ready to post right now.</div>';
 }
 async function copyCaption(id, btn) {
   const x = findVideo(id);
