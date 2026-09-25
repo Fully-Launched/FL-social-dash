@@ -303,12 +303,10 @@ function openPortalEditForm(videoId) {
   const field = ([key, label, rows]) => lbl(label) + (rows
     ? `<textarea data-f="${key}" rows="${rows}" style="width:100%">${escapeHtml(v[key] || "")}</textarea>`
     : `<input type="text" data-f="${key}" value="${escapeHtml(v[key] || "")}" style="width:100%">`);
-  const date = (key, label) => `<div>${lbl(label)}<input type="date" data-f="${key}" value="${escapeHtml(v[key] || "")}" style="width:100%"></div>`;
+  const date = (key, label) => `<div>${lbl(label)}${dateSelectHtml(key, v[key])}</div>`;
   const box = openModal(`<h2>Edit video</h2>
     ${PORTAL_EDIT_FIELDS.map(field).join("")}
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
-      ${date("dueToFilm", "Film by")}${date("dueToEdit", "Edit by")}${date("postDate", "Post date")}
-    </div>
+    ${date("dueToFilm", "Film by")}${date("dueToEdit", "Edit by")}${date("postDate", "Post date")}
     <div class="modal-actions" style="margin-top:14px"><button class="primary" id="portalEditSave">Save</button><button onclick="closeVideoModal()">Cancel</button></div>`);
   box.querySelector("#portalEditSave").onclick = async e => {
     const patch = {};

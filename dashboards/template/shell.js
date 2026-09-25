@@ -268,12 +268,60 @@ function closeVideoModal() {
   const root = document.getElementById("videoModalRoot");
   if (root) root.classList.add("hidden");
 }
+// ---------- Date picker: Month · Day · Year dropdowns ----------
+// Quicker than typing a date. dateSelectHtml renders the three dropdowns
+// plus a hidden <input data-f="key"> holding the YYYY-MM-DD value (blank
+// until month and day are both picked), so forms read it like any other
+// field. The year starts on this year. openModal wires them up; the
+// hidden input fires "change" whenever the date changes, and has
+// setDate(iso) for code that fills it in.
+const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+function dateSelectHtml(key, value) {
+  const [y, m, d] = (value || "").split("-");
+  const thisYear = new Date().getFullYear();
+  const years = [thisYear - 1, thisYear, thisYear + 1, thisYear + 2];
+  if (y && !years.includes(+y)) years.push(+y);
+  const opt = (val, label, sel) => `<option value="${val}" ${sel ? "selected" : ""}>${label}</option>`;
+  const pad = n => String(n).padStart(2, "0");
+  return `<div class="date-select">
+    <select data-part="m" aria-label="Month">${opt("", "Month", !m)}${MONTH_NAMES.map((name, i) => opt(pad(i + 1), name, m === pad(i + 1))).join("")}</select>
+    <select data-part="d" aria-label="Day">${opt("", "Day", !d)}${Array.from({ length: 31 }, (_, i) => opt(pad(i + 1), i + 1, d === pad(i + 1))).join("")}</select>
+    <select data-part="y" aria-label="Year">${years.sort().map(yr => opt(yr, yr, y ? +y === yr : yr === thisYear)).join("")}</select>
+    <input type="hidden" data-f="${key}" value="${escapeHtml(value || "")}">
+  </div>`;
+}
+function wireDateSelects(root) {
+  root.querySelectorAll(".date-select").forEach(w => {
+    const input = w.querySelector("input"), part = p => w.querySelector(`[data-part="${p}"]`);
+    const sync = () => {
+      const m = part("m").value, y = part("y").value;
+      let d = part("d").value;
+      if (m && d) {
+        // Feb 30 → Feb 28/29, and so on.
+        const last = new Date(Date.UTC(+y, +m, 0)).getUTCDate();
+        if (+d > last) { d = String(last).padStart(2, "0"); part("d").value = d; }
+        input.value = `${y}-${m}-${d}`;
+      } else input.value = "";
+      input.dispatchEvent(new Event("change"));
+    };
+    ["m", "d", "y"].forEach(p => part(p).addEventListener("change", sync));
+    input.setDate = iso => {
+      const [y, m, d] = (iso || "").split("-");
+      if (y && !part("y").querySelector(`option[value="${y}"]`)) part("y").insertAdjacentHTML("beforeend", `<option value="${y}">${y}</option>`);
+      if (y) part("y").value = y;
+      part("m").value = m || ""; part("d").value = d || "";
+      input.value = iso || "";
+    };
+  });
+}
+
 // Any content in the same modal (the operator's video form uses this).
 // Returns the box so the caller can wire up what it rendered.
 function openModal(html) {
   ensureModalRoot();
   const box = document.getElementById("videoModalBox");
   box.innerHTML = `<div class="modal-close" onclick="closeVideoModal()">✕</div>` + html;
+  wireDateSelects(box);
   document.getElementById("videoModalRoot").classList.remove("hidden");
   return box;
 }

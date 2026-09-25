@@ -334,7 +334,7 @@ function textField(key, label, value, rows) {
     : `<input type="text" data-f="${key}" value="${escapeHtml(value || "")}" style="width:100%;margin-bottom:10px">`);
 }
 function dateField(key, label, value) {
-  return `<div>${lbl(label)}<input type="date" data-f="${key}" value="${escapeHtml(value || "")}" style="width:100%;margin-bottom:10px"></div>`;
+  return `<div>${lbl(label)}${dateSelectHtml(key, value)}</div>`;
 }
 
 function openVideoForm(id, presetClientId) {
@@ -395,7 +395,7 @@ function openVideoForm(id, presetClientId) {
   // 7-day rule, as a suggestion only: fill edit-by from the post date
   // when it's still empty. Never overwrites a date someone typed.
   const postEl = box.querySelector('[data-f="postDate"]'), editEl = box.querySelector('[data-f="dueToEdit"]');
-  postEl.addEventListener("change", () => { if (postEl.value && !editEl.value) editEl.value = addDaysISO(postEl.value, -7); });
+  postEl.addEventListener("change", () => { if (postEl.value && !editEl.value) editEl.setDate(addDaysISO(postEl.value, -7)); });
 
   box.querySelector("#vfSave").onclick = async () => {
     const err = box.querySelector("#vfError");
