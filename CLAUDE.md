@@ -466,7 +466,7 @@ address, who films, raw footage folder, finished video folder) → **Editor
 portal ↗**. A client filter across the top narrows every page.
 
 Click any video for its card; "Edit" opens the full form (any status, the
-dates, editor, the idea fields, caption, note, and one "Editing
+dates (Month · Day · Year dropdowns, `dateSelectHtml` in shell.js), editor, the idea fields, caption, note, and one "Editing
 instructions" field stored as `editor_brief.instructions` — older videos'
 separate brief fields are folded into it for display). Entering a post date
 suggests edit-by 7 days earlier.
