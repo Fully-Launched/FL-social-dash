@@ -6,15 +6,15 @@
 // Then editor → Tait (revisions / approve + captions) → client final
 // approval (with caption edits, or changes to the video) → Ready to Post.
 //   node tests/flow.test.mjs 1   smooth path
-//   node tests/flow.test.mjs 2   suggestions, client caption edits, client asks for video changes
+//   node tests/flow.test.mjs 2   suggestions, client asks for video changes
 //   node tests/flow.test.mjs 3   Tait asks for revisions; client backs out of "filmed" once; one video switched to "we film"
 import { freshDb, makeHarness, checker } from "./harness.mjs";
 
 const RUN = Number(process.argv[2] || 1);
 const V = {
-  1: { change: [], opRev: [], clientRev: [], capEdit: [], post: 30, early: false, switchToUs: [] },
-  2: { change: [25, 26, 27], opRev: [], clientRev: [4, 5], capEdit: [7, 8], post: 10, early: false, switchToUs: [] },
-  3: { change: [0], opRev: [1, 2, 3], clientRev: [6], capEdit: [9], post: 15, early: true, switchToUs: [29] },
+  1: { change: [], opRev: [], clientRev: [], post: 30, early: false, switchToUs: [] },
+  2: { change: [25, 26, 27], opRev: [], clientRev: [4, 5], post: 10, early: false, switchToUs: [] },
+  3: { change: [0], opRev: [1, 2, 3], clientRev: [6], post: 15, early: true, switchToUs: [29] },
 }[RUN];
 console.log(`Run ${RUN}:`, JSON.stringify(V));
 
@@ -108,6 +108,9 @@ const clientFilmed = idx.filter(i => !V.switchToUs.includes(i));
 let cl = track(await CL());
 chk("client nav: My Videos, Calendar, Documents, footage folder", $$(cl, ".nav-item").map(n => n.textContent.trim()).join("|") === "🎬 My Videos|📅 Content Calendar|📄 Documents|📁 My footage folder ↗");
 chk("footage folder card on My Videos", $(cl, "#footageCard").style.display !== "none" && $(cl, "#footageCardLink").href === "https://drive/fl-footage");
+chk("My Videos opens on All", $(cl, "#videoTabs .chip.active").dataset.tab === "all" && $(cl, "#videoTabs .chip").textContent === `All (30)`, $(cl, "#videoTabs").textContent);
+chk("All shows the To film group with its heading", $(cl, '[data-panel="film"]').style.display !== "none" && $(cl, '[data-panel="film"] .panel-title').style.display !== "none");
+chk("client can't edit anything on a card", !$$(cl, "#view-videos button").some(b => b.textContent.includes("Edit")) && !$(cl, "#view-videos textarea:not(.note-box textarea)"));
 chk(`To film shows ${clientFilmed.length}`, $(cl, "#videoTabs").textContent.includes(`To film (${clientFilmed.length})`), $(cl, "#videoTabs").textContent);
 if (V.switchToUs.length) chk("switched video shows under Ideas to approve", $(cl, "#videoTabs").textContent.includes(`Ideas to approve (${V.switchToUs.length})`), $(cl, "#videoTabs").textContent);
 else chk("no Ideas to approve tab for a client who films", !$(cl, "#videoTabs").textContent.includes("Ideas to approve"));
@@ -244,8 +247,10 @@ chk("all 30 with the client, both captions", (await count("status='client_review
 cl = track(await CL());
 chk("Finished videos to approve (30)", $(cl, "#videoTabs").textContent.includes("Finished videos to approve (30)"), $(cl, "#videoTabs").textContent);
 const fr = portalCard(cl, "#listFinal", title(0));
-chk("final card: watch link + both captions, editable", fr && !!fr.querySelector('a[href="https://drive/fl-final"]')
-  && fr.querySelector('[data-cap="caption"]').value === "Caption 1" && fr.querySelector('[data-cap="onScreenCaption"]').value === "On screen 1");
+chk("final card: watch link + both captions, read-only", fr && !!fr.querySelector('a[href="https://drive/fl-final"]')
+  && fr.textContent.includes("Caption 1") && fr.textContent.includes("On screen 1") && !fr.querySelector("[data-cap]")
+  && Array.from(fr.querySelectorAll(".actions button")).map(b => b.textContent).join("|") === "Approve for posting|Request changes to the video");
+chk("All lists the finished videos to approve", $(cl, '[data-panel="final"]').style.display !== "none" && $(cl, "#videoTabs .chip").textContent === "All (30)");
 for (const i of idx) {
   const card = portalCard(cl, "#listFinal", title(i));
   if (V.clientRev.includes(i)) {
@@ -253,14 +258,9 @@ for (const i of idx) {
     await dismissThanks(cl, "make those changes");
     continue;
   }
-  if (V.capEdit.includes(i)) {
-    card.querySelector('[data-cap="caption"]').value = "Client caption " + i;
-    card.querySelector('[data-cap="onScreenCaption"]').value = "Client on-screen " + i;
-  }
   await click(btn(card, "Approve for posting"), "approve for posting " + i);
   await dismissThanks(cl, "Approved for posting");
 }
-for (const i of V.capEdit) { const s = await statusOf(title(i)); chk(`client's caption edits saved #${i}`, s.caption === "Client caption " + i && s.on_screen_caption === "Client on-screen " + i && s.status === "ready_to_post", s); }
 if (V.clientRev.length) {
   ed = track(await ED());
   for (const i of V.clientRev) chk(`editor sees the client's change #${i}`, edCard(ed, title(i))?.textContent.includes("Use the other take " + i));
@@ -288,7 +288,7 @@ $(op, "#bkText").dispatchEvent(new op.w.Event("input"));
 await click($(op, "#bkSave"), "save premium ideas");
 chk("premium ideas default to we film", (await count("client_id=$1 and filmed_by='us' and status='concept_pending'", [PREM])) === 3);
 let prem = track(await PREMP());
-chk("premium tabs: Ideas to approve + Finished only", $$(prem, "#videoTabs .chip").map(c => c.textContent).join("|") === "Ideas to approve (3)|Finished videos to approve (0)", $$(prem, "#videoTabs .chip").map(c => c.textContent));
+chk("premium tabs: All, Ideas to approve, Finished", $$(prem, "#videoTabs .chip").map(c => c.textContent).join("|") === "All (3)|Ideas to approve (3)|Finished videos to approve (0)", $$(prem, "#videoTabs .chip").map(c => c.textContent));
 chk("premium still has its footage folder link", $(prem, "#footageCardLink").href === "https://drive/prem-footage");
 const pc = portalCard(prem, "#listIdeas", "Prem 1");
 chk("premium idea card: hook, script, outline — no filming instructions or upload", pc && ["Prem hook 1", "Prem script 1", "- Prem point 1"].every(t => pc.textContent.includes(t)) && !pc.textContent.includes("never shown") && !pc.querySelector("a[href*='footage']"));

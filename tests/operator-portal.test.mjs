@@ -64,16 +64,7 @@ for (const [t, label, note, want] of steps) {
 }
 chk("request changes sends concept back to owner", (await row("Change me")).concept_approved_at === null);
 
-// Edit form
-btn(card(p, "Edit me"), "✏️ Edit").click(); await settle();
-const box = p.d.getElementById("videoModalBox");
-box.querySelector('[data-f="title"]').value = "Edited title";
-box.querySelector('[data-f="hook"]').value = "New hook";
-box.querySelector('[data-f="postDate"]').value = "2026-10-15";
-box.querySelector("#portalEditSave").click(); await settle();
-const e = await row("Edited title");
-chk("edit saved", e && e.hook === "New hook" && e.post_date === "2026-10-15" && e.status === "to_film", e);
-chk("edited card shows new title", !!card(p, "Edited title"));
+chk("no Edit button in the portal, even for the operator", !Array.from(p.d.querySelectorAll("#view-videos button")).some(b => b.textContent.includes("Edit")));
 
 chk("no alerts or page errors (FL)", !p.ui.alerts.length && !p.ui.errors.length, [p.ui.alerts, p.ui.errors]);
 
@@ -81,7 +72,7 @@ chk("no alerts or page errors (FL)", !p.ui.alerts.length && !p.ui.errors.length,
 p = await open("dad-co");
 chk("concierge: approve final shows", !!btn(card(p, "Dad final"), "Approve for posting"));
 chk("concierge (we film): no filmed button", !btn(card(p, "Dad final"), "Video has been filmed"));
-chk("concierge: edit shows", !!btn(card(p, "Dad final"), "✏️ Edit"));
+chk("concierge: final card has only Approve / Request changes", Array.from(card(p, "Dad final").querySelectorAll(".actions button")).map(b => b.textContent).join("|") === "Approve for posting|Request changes to the video");
 
 const log = (await db.query("select action, changed_by_role from social_status_audit_log where action <> 'created'")).rows;
 chk("audit log: all by operator, none as client", log.length >= 5 && log.every(r => r.changed_by_role === "operator" && r.action === "direct_update"), log);

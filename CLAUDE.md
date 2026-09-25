@@ -450,10 +450,10 @@ back one piece at a time:
    so the client portal never shows it) or "Approve & add captions"
    (on-screen caption, post caption — required — platforms, post date),
    which clears the revisions and sends it to the client.
-6. The client watches it, can edit both captions right on the card, and
-   approves it for posting — or requests changes to the video (a box in the
-   card; it goes back to the editor and shows in the same Revisions needed
-   section). Every client step ends in a short thank-you message, never a
+6. The client watches it, reads both captions, and approves it for
+   posting — or requests changes (a box in the card; it goes back to the
+   editor and shows in the same Revisions needed section). Clients can't
+   edit anything on a card. Every client step ends in a short thank-you message, never a
    browser pop-up.
 7. To Do's Ready to post stage lists it by post date with the captions and finished video;
    whoever posts marks it posted. Posting stays manual (principle 6).
@@ -480,9 +480,10 @@ suggests edit-by 7 days earlier.
 ### Client portal — `/clients/<slug>`
 
 One shared file; the slug comes from the URL. **My Videos** (a "Your
-footage folder" card, then tabs: To film — client-filmed ideas; Ideas to
-approve — we-film ideas; Finished videos to approve. A tab shows when it
-fits the client's default or has something in it), **Content Calendar**
+footage folder" card, then tabs: **All** — the default, every action the
+client has to take, grouped under headings; To film — client-filmed
+ideas; Ideas to approve — we-film ideas; Finished videos to approve. A
+tab shows when it fits the client's default or has something in it), **Content Calendar**
 (post dates, plus 🎥 film dates for client-filmed ideas), **Documents**
 (the client's important Google Drive docs — `social_client_documents`,
 added on the operator's Clients → Edit; clients read only their own) and **My footage
@@ -490,10 +491,10 @@ folder ↗** (the client's Drive folder — what they upload and what we
 film). A video card shows only what's needed: client-filmed ideas — film-by
 date, hook, script, outline, how to film it, upload link; we-film ideas —
 hook, script, outline; at final approval — the video and both captions
-(editable). Every client button calls
+(read-only). Every client button calls
 `social_client_video_action`. An operator opening a portal sees exactly
-what the client sees, can click the client's buttons and ✏️ Edit, and it's
-logged as the operator.
+what the client sees and can click the client's buttons (logged as the
+operator); editing happens only on the operator dashboard.
 
 ### Editor dashboard — `/editor/dashboard.html`
 

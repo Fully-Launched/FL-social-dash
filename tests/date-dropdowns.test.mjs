@@ -1,6 +1,6 @@
 // Month · Day · Year dropdowns in the video forms: picking a date, the
 // 7-day edit-by suggestion, day clamping (Feb 31 → Feb 28), editing an
-// existing date, and saving.
+// existing date, and saving (operator video form).
 import { freshDb, makeHarness, checker } from "./harness.mjs";
 
 const db = await freshDb();
@@ -58,16 +58,6 @@ await pick("postDate", "04");
 box().querySelector("#vfSave").click(); await settle();
 chk("changed month saved", (await db.query("select post_date::text p from social_videos where id=$1", [id])).rows[0].p === "2027-04-09");
 
-// Client portal edit form (operator view) uses the same dropdowns.
-const p = await openPage("clients/portal.html", OP, "https://fl.test/clients/test-fully-launched");
-p.w.openPortalEditForm(id); await settle();
-const pbox = p.d.getElementById("videoModalBox");
-chk("portal edit form: dropdowns, no typed dates", pbox.querySelectorAll(".date-select").length === 3 && !pbox.querySelector('input[type="date"]'));
-const s = pbox.querySelector('[data-f="postDate"]').closest(".date-select").querySelector('[data-part="d"]');
-s.value = "15"; s.dispatchEvent(new p.w.Event("change")); await settle();
-pbox.querySelector("#portalEditSave").click(); await settle();
-chk("portal edit saved the new day", (await db.query("select post_date::text p from social_videos where id=$1", [id])).rows[0].p === "2027-04-15");
-
-chk("no page errors", !op.ui.errors.length && !p.ui.errors.length && !op.ui.alerts.length, [op.ui.errors, p.ui.errors, op.ui.alerts]);
+chk("no page errors", !op.ui.errors.length && !op.ui.alerts.length, [op.ui.errors, op.ui.alerts]);
 console.log(`${counts.pass} passed, ${counts.fail} failed`);
 process.exit(counts.fail ? 1 : 0);
