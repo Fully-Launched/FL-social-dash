@@ -106,23 +106,26 @@ const INVITES_ENABLED = false;
 
 // ---------- data ----------
 async function loadLiveData() {
-  const [clientsRes, videosRes, foldersRes, editorsRes] = await Promise.all([
+  const [clientsRes, videosRes, foldersRes, editorsRes, docsRes] = await Promise.all([
     sbClient.from("social_clients").select("*").order("name"),
     sbClient.from("social_videos").select("*").order("created_at"),
     sbClient.from("social_drive_folder_links").select("*"),
     sbClient.from("social_editors").select("*").order("name"),
+    sbClient.from("social_client_documents").select("*").order("position"),
   ]);
-  const errors = [clientsRes, videosRes, foldersRes, editorsRes].filter(r => r.error).map(r => r.error.message);
+  const errors = [clientsRes, videosRes, foldersRes, editorsRes, docsRes].filter(r => r.error).map(r => r.error.message);
   document.getElementById("loadError").innerHTML = errors.length
     ? `<div class="card" style="border-color:var(--red)"><b style="color:var(--red)">Couldn't load everything from Supabase:</b><div class="meta">${errors.map(escapeHtml).join("<br>")}</div></div>` : "";
 
-  const folderByClient = {};
+  const folderByClient = {}, docsByClient = {};
   (foldersRes.data || []).forEach(f => { folderByClient[f.client_id] = f; });
+  (docsRes.data || []).forEach(d => { (docsByClient[d.client_id] = docsByClient[d.client_id] || []).push(d); });
   CLIENTS = (clientsRes.data || []).map(c => {
     const f = folderByClient[c.id] || {};
     return {
       id: c.id, slug: c.slug, name: c.name, displayName: c.name, clientSystem: c.client_system,
       contactName: c.contact_name, contactPhone: c.contact_phone, contactEmail: c.contact_email,
+      documents: docsByClient[c.id] || [],
       driveFolders: { footageUploads: f.footage_uploads, finalEdits: f.final_edits, brandVoice: f.brand_voice },
     };
   });
@@ -708,6 +711,9 @@ function openClientPanel(clientId) {
     ${lbl("Raw footage folder (Google Drive link)")}<input type="text" id="cpFootage" value="${escapeHtml(f.footageUploads || "")}" style="width:100%;margin-bottom:10px">
     ${lbl("Finished video folder (Google Drive link)")}<input type="text" id="cpFinal" value="${escapeHtml(f.finalEdits || "")}" style="width:100%;margin-bottom:10px">
     ${lbl("Brand guidelines (Google Doc link — the editor sees it on every video)")}<input type="text" id="cpBrand" value="${escapeHtml(f.brandVoice || "")}" style="width:100%;margin-bottom:10px">
+    <h3 style="font-size:0.85rem;margin:16px 0 4px;color:var(--sub)">Documents <span style="font-weight:400">— the client sees these on their portal's Documents page</span></h3>
+    <div id="cpDocs"></div>
+    <button type="button" id="cpAddDoc" style="font-size:0.78rem;padding:5px 12px;margin:4px 0 14px">+ Add document</button>
     <div class="auth-error" id="cpError"></div>
     <div style="display:flex;gap:8px">
       <button class="primary" id="cpSave">${clientId ? "Save changes" : "Create client"}</button>
@@ -715,6 +721,16 @@ function openClientPanel(clientId) {
     </div>
   `;
   panel.style.display = "block";
+  // Documents: one row per link (name + Google Drive link), in order.
+  const docsEl = document.getElementById("cpDocs");
+  const addDocRow = (d = {}) => {
+    docsEl.insertAdjacentHTML("beforeend", `<div class="doc-row" style="display:flex;gap:6px;margin-bottom:6px">
+      <input type="text" data-doc="title" placeholder="Name, e.g. Brand Voice" value="${escapeHtml(d.title || "")}" style="flex:1 1 40%">
+      <input type="text" data-doc="url" placeholder="Google Drive link" value="${escapeHtml(d.url || "")}" style="flex:1 1 60%">
+      <button type="button" aria-label="Remove" style="padding:6px 11px" onclick="this.parentElement.remove()">✕</button></div>`);
+  };
+  (c.documents || []).forEach(addDocRow);
+  document.getElementById("cpAddDoc").onclick = () => addDocRow();
   const nameEl = document.getElementById("cpName"), slugEl = document.getElementById("cpSlug");
   if (slugEl) {
     let slugTouched = false;
@@ -733,6 +749,11 @@ function openClientPanel(clientId) {
     };
     if (!name) { errEl.textContent = "Name can't be empty."; return; }
     if (contact.contact_email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(contact.contact_email)) { errEl.textContent = "That contact email doesn't look right."; return; }
+    const docs = Array.from(docsEl.querySelectorAll(".doc-row")).map(r => ({
+      title: r.querySelector('[data-doc="title"]').value.trim(), url: r.querySelector('[data-doc="url"]').value.trim() }))
+      .filter(d => d.title || d.url);
+    const badDoc = docs.find(d => !d.title || !/^https?:\/\//i.test(d.url));
+    if (badDoc) { errEl.textContent = `Each document needs a name and a link starting with https:// (check "${badDoc.title || badDoc.url}").`; return; }
     let id = clientId;
     e.target.disabled = true;
     if (id) {
@@ -751,8 +772,14 @@ function openClientPanel(clientId) {
       final_edits: document.getElementById("cpFinal").value.trim() || null,
       brand_voice: document.getElementById("cpBrand").value.trim() || null,
     }, { onConflict: "client_id" });
+    if (folderRes.error) { e.target.disabled = false; errEl.textContent = folderRes.error.message; return; }
+    // Documents: replace this client's list with what's in the form.
+    const delRes = await sbClient.from("social_client_documents").delete().eq("client_id", id);
+    const insRes = !delRes.error && docs.length
+      ? await sbClient.from("social_client_documents").insert(docs.map((d, i) => ({ client_id: id, title: d.title, url: d.url, position: i })))
+      : { error: null };
     e.target.disabled = false;
-    if (folderRes.error) { errEl.textContent = folderRes.error.message; return; }
+    if (delRes.error || insRes.error) { errEl.textContent = "Couldn't save the documents: " + (delRes.error || insRes.error).message; return; }
     panel.style.display = "none";
     await loadLiveData();
   };

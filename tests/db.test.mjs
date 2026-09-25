@@ -20,11 +20,11 @@ await db.exec(`
   alter default privileges in schema public grant all on sequences to anon, authenticated;
   alter default privileges in schema public grant execute on functions to anon, authenticated;
 `);
-for (const f of ["001_social_os_schema.sql", "002_social_videos_overview_body.sql", "003_social_videos_write_path.sql", "004_social_videos_final_cut_url.sql", "005_social_videos_on_screen_caption.sql", "006_client_journey.sql"]) {
+for (const f of ["001_social_os_schema.sql", "002_social_videos_overview_body.sql", "003_social_videos_write_path.sql", "004_social_videos_final_cut_url.sql", "005_social_videos_on_screen_caption.sql", "006_client_journey.sql", "007_client_documents.sql"]) {
   await db.exec(readFileSync(MIG + f, "utf8"));
 }
 // Re-running every migration, in order, is safe (006 replaces 003's client function again).
-for (const f of ["003_social_videos_write_path.sql", "004_social_videos_final_cut_url.sql", "005_social_videos_on_screen_caption.sql", "006_client_journey.sql"]) {
+for (const f of ["003_social_videos_write_path.sql", "004_social_videos_final_cut_url.sql", "005_social_videos_on_screen_caption.sql", "006_client_journey.sql", "007_client_documents.sql"]) {
   await db.exec(readFileSync(MIG + f, "utf8"));
 }
 
@@ -153,6 +153,18 @@ await as(U.op, `update social_videos set status='client_review' where id=$1`, [v
 await db.query(`update social_videos set caption='Old caption', on_screen_caption='Old on-screen' where id=$1`, [v3]);
 const fa = await as(U.cl, `select status, caption, on_screen_caption from social_client_video_action($1,'approve_final',null,$2,$3)`, [v3, "New caption", "  "]);
 check("client final approve with caption edit (blank on-screen = unchanged)", fa.rows?.[0].status === "ready_to_post" && fa.rows[0].caption === "New caption" && fa.rows[0].on_screen_caption === "Old on-screen", fa);
+
+// ── documents ──
+await db.exec(`insert into social_client_documents (client_id, title, url, position) values
+  ('${C.self}','Brand Voice','https://docs/voice',0), ('${C.con}','Con doc','https://docs/con',0);`);
+check("client reads only their own documents", (await as(U.cl, `select title from social_client_documents`)).rows.map(r => r.title).join() === "Brand Voice");
+const docIns = await as(U.cl, `insert into social_client_documents (client_id,title,url) values ($1,'x','https://x')`, [C.self]);
+check("client can't add documents", !!docIns.error);
+const docUpd = await as(U.cl, `update social_client_documents set url='https://evil' where client_id=$1`, [C.self]);
+check("client can't change documents", !docUpd.error && docUpd.affected === 0);
+check("editor doesn't see client documents", (await as(U.ed, `select id from social_client_documents`)).rows.length === 0);
+check("operator sees all documents", (await as(U.op, `select id from social_client_documents`)).rows.length === 2);
+check("anon sees no documents", !!(await as(null, `select id from social_client_documents`)).error || (await as(null, `select id from social_client_documents`)).rows.length === 0);
 
 // ── invites ──
 const inv = { ok: "00000000-0000-0000-0000-0000000000f1", unconfirmed: "00000000-0000-0000-0000-0000000000f2", stranger: "00000000-0000-0000-0000-0000000000f3" };

@@ -19,6 +19,7 @@
   <div class="sync-badge" id="operatorBadge" style="display:none">🔧 Viewing as operator</div>
   <div class="nav-item active" data-view="videos"><span class="ic">🎬</span> My Videos</div>
   <div class="nav-item" data-view="calendar"><span class="ic">📅</span> Content Calendar</div>
+  <div class="nav-item" data-view="documents"><span class="ic">📄</span> Documents</div>
   <a class="nav-item" id="footageNav" href="#" target="_blank" rel="noopener" style="text-decoration:none;display:none"><span class="ic">📁</span> My footage folder ↗</a>
 </nav>
 
@@ -54,6 +55,11 @@
     </div>
   </section>
 
+  <section class="view" id="view-documents">
+    <div class="page-head"><h1>Documents</h1><p>Your most important documents, in one place. Each opens in Google Drive.</p></div>
+    <div class="card"><div id="docsList"></div></div>
+  </section>
+
   <section class="view" id="view-calendar">
     <div class="page-head"><h1>Content Calendar</h1><p>Every video on its post date<span id="calFilmNote"> (🎥 marks when to film it)</span>. Click one to open it.</p></div>
     <div class="card"><div class="cal-grid" id="calGrid"></div></div>
@@ -81,6 +87,7 @@
 
 let CLIENT = null;          // the social_clients row
 let DRIVE_FOLDERS = {};     // from social_drive_folder_links
+let DOCUMENTS = [];         // from social_client_documents, in order
 let VIDEOS = [];            // from social_videos (videoFromRow shape)
 let HIDDEN_CONCEPTS = 0;    // operator view only: ideas the client can't see (sent back with suggestions)
 let IS_OPERATOR = false;
@@ -375,6 +382,13 @@ function renderCalendar() {
     calState, renderCalendar);
 }
 
+function renderDocuments() {
+  document.getElementById("docsList").innerHTML = DOCUMENTS.length ? DOCUMENTS.map(d => `
+    <div class="row"><div class="left"><b>📄 ${escapeHtml(d.title)}</b></div>
+      <a class="btn primary" href="${escapeHtml(d.url)}" target="_blank" rel="noopener">Open</a></div>`).join("")
+    : `<div class="empty">No documents yet.${IS_OPERATOR ? " Add them on the operator dashboard: Clients → Edit → Documents." : ""}</div>`;
+}
+
 // Two logins can open a portal: any operator (any client), or this
 // client's own social_client_users login. The social_clients lookup by
 // slug is both the access check and the data fetch — RLS decides whether
@@ -417,6 +431,10 @@ async function startApp(user, access) {
     document.getElementById("footageNav").style.display = "";
     document.getElementById("footageCard").style.display = "";
   }
+
+  const { data: docs } = await sbClient.from("social_client_documents").select("*").eq("client_id", CLIENT.id).order("position");
+  DOCUMENTS = docs || [];
+  renderDocuments();
 
   initRouter("videos");
   await loadVideos();
