@@ -1,44 +1,54 @@
 # Fully Launched — Brain
 
 Last updated: 2026-09-25
-Interviewed by: Tait Allen (founder, talking about his own agency)
-Sources: pending — Tait's voice memo (to be transcribed into
-`sources/`). Replaces the old fake "home-fitness coach" test client;
-nothing from that carries over.
+Interviewed by: Tait Allen (founder) and Luke Bothun (cofounder), talking about their own agency
+Sources: `sources/2026-09-25-tait-voice-memo.md` · `sources/2026-09-25-luke-bothun-answers.md` ·
+`research/2026-09-25-reddit-tait-memo.md`. Replaces the old fake "home-fitness coach" test
+client; nothing from that carries over.
 
 Drive: Fully Social OS → Clients → Fully Launched
-(https://drive.google.com/drive/folders/1X6CJurBCvH7N3fRQJ69uPuC0g4IlOD8z)
+(https://drive.google.com/drive/folders/1X6CJurBCvH7N3fRQJ69uPuC0g4IlOD8z). The four working
+docs are on the client portal's Documents page:
+- Customer Data — `sources/customer-data.md` (https://docs.google.com/document/d/19WUOPXJw7gBIa41UPfHgvGnCRiEZFB5t0QFLUUNL1mA/edit)
+- Your Voice (3-3-3) — `sources/positioning.md` (https://docs.google.com/document/d/1CzaSXHTk_25Qb6GoueDd_wxzHpAV0efVmD6REdf9k_4/edit)
+- Content Ideas — `concepts/content-ideas.md` (https://docs.google.com/document/d/1Lax_VKFYEeJxhJhOvdRn_Y6ALFtkF4Jyd0AZYnFi9jE/edit)
+- Content Research — `research/content-research.md` (https://docs.google.com/document/d/1Tc5WbaM0jK7rdc2x4WqxongfJ_D0VT_f1Kw-M1UqwAw/edit)
 
 ## The business
-Pending the voice memo. Only what's public so far: Fully Launched is
-Tait's social media agency for founder-led brands (fullylaunched.com) —
-it runs social end to end: customer analysis, positioning, concepts and
-scripts, filming direction, editing, review, posting.
+- Digital media services in four categories [Tait]: social media (Tait runs it) ·
+  websites · e-commerce/marketplaces (Shopify, Etsy, Amazon, TikTok Shop; Claude in the
+  back end) · AI systems (custom Claude solutions / Claude skills).
+- Posts on LinkedIn, Instagram, Facebook [Tait].
+- Proof: a customer proven in in-person markets, launched on Etsy, Walmart, Amazon —
+  sales doubled in a few months [Luke].
 
 ## Unique solution
-The main thing this whole brain exists to capture: Fully Launched's
-unique solution to its customer's problem, in Tait's words. Lives in
-`sources/customer-data.md` → "Our unique solution" (Drive: 05 Assets →
-Customer Data → "Fully Launched — Customer Data").
+We take one painful manual process or sales channel and ship a working solution in weeks,
+not months, built around how the business actually runs — not a template [Luke]; everything
+simplified [Tait]; for social media, a whole content system in ~2 hours a month [Tait].
+Full detail: `sources/customer-data.md` → "Our unique solution".
 
 ## Ideal customer
 See `sources/customer-data.md`.
 
 ## Founder facts
-- Origin story — pending the voice memo.
-- Voice — pending the voice memo.
+- Why we started [Luke]: great local businesses stuck because the owner did everything;
+  online businesses failing on unoptimized Etsy/Faire listings; wanted to help, and to do
+  fast, fun projects as a team.
+- Voice — not captured yet (pending).
 - Non-negotiables — pending.
 
-## Positioning canvas — three pillars, three formats, three perspectives
-See `sources/positioning.md` (Drive: 05 Assets → Content Ideas →
-"Fully Launched — Taste").
-
-## Research
-See `research/` (Drive: 05 Assets → "Fully Launched — Research").
+## Positioning canvas
+See `sources/positioning.md` (Your Voice): 4 pillars (websites, organic content, AI
+systems, marketplaces) + the "Building Fully Launched" series (4+ videos/week), 3 formats,
+3 perspectives (third to confirm).
 
 ## Do / don't
-Pending.
+- Don't: invent client facts, results or numbers beyond what's in the sources.
+- Everything else pending.
 
 ## Open questions
-Everything above marked pending. `concept-engine` and `script-writer`
-stop and ask rather than filling these in.
+- Third unique perspective — Luke's "start small, ship the one thing" is the candidate.
+- Voice / how Tait talks on camera.
+- Answers the Content Ideas doc marks "Needs from you" (privacy, maintenance, Etsy ads,
+  the 3 website steps, results examples, client permission for the case study, etc.).
