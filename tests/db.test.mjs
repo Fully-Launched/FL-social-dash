@@ -9,7 +9,7 @@ const db = new PGlite();
 await db.exec(`
   create role anon nologin; create role authenticated nologin;
   create schema auth;
-  create table auth.users (id uuid primary key);
+  create table auth.users (id uuid primary key, email text, email_confirmed_at timestamptz);
   create function auth.uid() returns uuid language sql stable as
     $$ select coalesce(nullif(current_setting('request.jwt.claim.sub', true), ''),
                       (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub'))::uuid $$;
@@ -20,11 +20,13 @@ await db.exec(`
   alter default privileges in schema public grant all on sequences to anon, authenticated;
   alter default privileges in schema public grant execute on functions to anon, authenticated;
 `);
-for (const f of ["001_social_os_schema.sql", "002_social_videos_overview_body.sql", "003_social_videos_write_path.sql", "004_social_videos_final_cut_url.sql", "005_social_videos_on_screen_caption.sql"]) {
+for (const f of ["001_social_os_schema.sql", "002_social_videos_overview_body.sql", "003_social_videos_write_path.sql", "004_social_videos_final_cut_url.sql", "005_social_videos_on_screen_caption.sql", "006_client_journey.sql"]) {
   await db.exec(readFileSync(MIG + f, "utf8"));
 }
-await db.exec(readFileSync(MIG + "003_social_videos_write_path.sql", "utf8")); // idempotent re-run
-await db.exec(readFileSync(MIG + "004_social_videos_final_cut_url.sql", "utf8"));
+// Re-running every migration, in order, is safe (006 replaces 003's client function again).
+for (const f of ["003_social_videos_write_path.sql", "004_social_videos_final_cut_url.sql", "005_social_videos_on_screen_caption.sql", "006_client_journey.sql"]) {
+  await db.exec(readFileSync(MIG + f, "utf8"));
+}
 
 const U = {
   op: "00000000-0000-0000-0000-00000000000a", ed: "00000000-0000-0000-0000-00000000000b",
@@ -59,6 +61,7 @@ const rpc = (uid, fn, args) => as(uid, `select (${fn}).status, (${fn}).note from
 async function act(uid, video, action, note) {
   return as(uid, `select status, note, concept_approved_at from social_client_video_action($1,$2,$3)`, [video, action, note ?? null]);
 }
+async function statusF(v) { return (await db.query(`select filmed_by from social_videos where id=$1`, [v])).rows[0]; }
 async function status(v) { return (await db.query(`select status, note, concept_approved_at, editor_id from social_videos where id=$1`, [v])).rows[0]; }
 async function mkVideo(client, st, extra = "") {
   return (await db.query(`insert into social_videos (client_id, title, status ${extra ? "," + extra.split("=")[0] : ""}) values ($1,'t',$2 ${extra ? ",'" + extra.split("=")[1] + "'" : ""}) returning id`, [client, st])).rows[0].id;
@@ -89,9 +92,23 @@ check("concept hidden again after request changes", (await as(U.cl, `select id f
 await as(U.op, `select * from social_operator_approve_concept($1)`, [v1]);
 check("illegal jump refused", /currently concept_pending/.test((await act(U.cl, v1, "approve_final")).error));
 check("unknown action refused", /Unknown action/.test((await act(U.cl, v1, "post_it")).error));
-check("approve concept", (await act(U.cl, v1, "approve_concept")).rows?.[0].status === "to_film");
-check("mark filmed", (await act(U.cl, v1, "mark_filmed")).rows?.[0].status === "filmed");
-check("mark ready to edit", (await act(U.cl, v1, "mark_ready_to_edit")).rows?.[0].status === "ready_to_edit");
+check("new videos default to the client's system (self-serve → client films)", (await statusF(v1)).filmed_by === "client");
+check("client-filmed: no approve step", /isn't part of how this video gets filmed/.test((await act(U.cl, v1, "approve_concept")).error));
+await db.query(`update social_videos set post_date = current_date + 30 where id=$1`, [v1]);
+const sf = await act(U.cl, v1, "submit_footage");
+check("video has been filmed → straight to editing", sf.rows?.[0].status === "ready_to_edit", sf);
+const dates = (await db.query(`select due_to_edit = current_date + 7 as edit7, post_date = current_date + 30 as keptplan from social_videos where id=$1`, [v1])).rows[0];
+check("edit due 7 days after filming; later planned post date kept", dates.edit7 && dates.keptplan, dates);
+const vLate = await mkVideo(C.self, "to_film");
+await db.query(`update social_videos set post_date = current_date + 3 where id=$1`, [vLate]);
+await act(U.cl, vLate, "submit_footage");
+check("post date pushed to 14 days after filming when the plan was sooner", (await db.query(`select post_date = current_date + 14 as ok from social_videos where id=$1`, [vLate])).rows[0].ok);
+const vUs = await mkVideo(C.self, "concept_pending", "filmed_by=us");
+await as(U.op, `select * from social_operator_approve_concept($1)`, [vUs]);
+check("we-film video: client can't submit footage", /isn't part of how/.test((await act(U.cl, vUs, "submit_footage")).error));
+check("we-film video: client approves idea", (await act(U.cl, vUs, "approve_concept")).rows?.[0].status === "to_film");
+await db.query(`update social_videos set filmed_by = null where id=$1`, [vUs]);
+check("clearing who-films falls back to the client's default", (await statusF(vUs)).filmed_by === "client");
 check("note preserved from earlier request", (await status(v1)).note === "make it punchier");
 
 // ── reject ──
@@ -104,7 +121,8 @@ const vCon = await mkVideo(C.con, "to_film");
 check("client can't act on another client's video", /not found/i.test((await act(U.cl, vCon, "mark_filmed")).error));
 
 // ── concierge ──
-check("concierge can't mark filmed", /concierge/.test((await act(U.clCon, vCon, "mark_filmed")).error));
+check("concierge videos default to we film", (await statusF(vCon)).filmed_by === "us");
+check("concierge (we film) can't mark filmed", /isn't part of how/.test((await act(U.clCon, vCon, "mark_filmed")).error));
 const vCon2 = await mkVideo(C.con, "client_review");
 check("concierge request revisions needs note", /note is required/.test((await act(U.clCon, vCon2, "request_revisions")).error));
 check("concierge request revisions", (await act(U.clCon, vCon2, "request_revisions", "cut the intro")).rows?.[0].status === "with_editor");
@@ -132,7 +150,26 @@ check("inactive editor can't deliver", /active editor/.test((await as(U.edOff, `
 
 // ── gate 2/3 via operator direct, then client final approve ──
 await as(U.op, `update social_videos set status='client_review' where id=$1`, [v3]);
-check("client final approve", (await act(U.cl, v3, "approve_final")).rows?.[0].status === "ready_to_post");
+await db.query(`update social_videos set caption='Old caption', on_screen_caption='Old on-screen' where id=$1`, [v3]);
+const fa = await as(U.cl, `select status, caption, on_screen_caption from social_client_video_action($1,'approve_final',null,$2,$3)`, [v3, "New caption", "  "]);
+check("client final approve with caption edit (blank on-screen = unchanged)", fa.rows?.[0].status === "ready_to_post" && fa.rows[0].caption === "New caption" && fa.rows[0].on_screen_caption === "Old on-screen", fa);
+
+// ── invites ──
+const inv = { ok: "00000000-0000-0000-0000-0000000000f1", unconfirmed: "00000000-0000-0000-0000-0000000000f2", stranger: "00000000-0000-0000-0000-0000000000f3" };
+await db.exec(`
+  update social_clients set contact_name='Pat', contact_email='Pat@Client.com' where id='${C.self}';
+  insert into auth.users (id, email, email_confirmed_at) values
+    ('${inv.ok}','pat@client.com', now()), ('${inv.unconfirmed}','pat@client.com', null), ('${inv.stranger}','who@else.com', now());
+  update auth.users set email='op@x', email_confirmed_at=now() where id='${U.op}';
+  update social_clients set contact_email='op@x' where id='${C.con}';
+`);
+check("unconfirmed email can't claim", (await as(inv.unconfirmed, `select social_claim_client_invite() c`)).rows[0].c === null);
+check("stranger can't claim", (await as(inv.stranger, `select social_claim_client_invite() c`)).rows[0].c === null);
+check("operator is never linked as a client", (await as(U.op, `select social_claim_client_invite() c`)).rows[0].c === null);
+check("invited contact claims their client (email case ignored)", (await as(inv.ok, `select social_claim_client_invite() c`)).rows[0].c === C.self);
+check("…and now sees that client's portal row", (await as(inv.ok, `select id from social_clients`)).rows.map(r => r.id).join() === C.self);
+check("claiming twice is harmless", (await as(inv.ok, `select social_claim_client_invite() c`)).rows[0].c === C.self);
+check("anon can't claim", /permission denied/.test((await as(null, `select social_claim_client_invite()`)).error));
 
 // ── anon ──
 check("anon can't call client fn", /permission denied/.test((await as(null, `select * from social_client_video_action($1,'approve_concept',null)`, [v1])).error));
@@ -143,8 +180,8 @@ check("anon can't call operator fn", /permission denied/.test((await as(null, `s
 const log = (await as(U.op, `select action, from_status, to_status, note, changed_by_role from social_status_audit_log where video_id=$1 order by id`, [v1])).rows;
 const actions = log.map(r => r.action).join(",");
 check("audit log sequence for v1",
-  actions === "created,approve_concept,request_concept_changes,approve_concept,approve_concept,mark_filmed,mark_ready_to_edit", actions);
-check("audit log roles", log.map(r => r.changed_by_role).join(",") === ",operator,client,operator,client,client,client", log.map(r => r.changed_by_role).join(","));
+  actions === "created,approve_concept,request_concept_changes,approve_concept,submit_footage", actions);
+check("audit log roles", log.map(r => r.changed_by_role).join(",") === ",operator,client,operator,client", log.map(r => r.changed_by_role).join(","));
 check("audit log keeps note", log[2].note === "make it punchier");
 check("operator direct update logged", (await as(U.op, `select action from social_status_audit_log where video_id=$1 and action='direct_update'`, [v3])).rows.length === 2);
 check("editor delivery logged as editor", (await as(U.op, `select 1 from social_status_audit_log where video_id=$1 and action='mark_delivered' and changed_by_role='editor'`, [v3])).rows.length === 1);

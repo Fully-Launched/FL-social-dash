@@ -8,7 +8,7 @@ import { readFileSync } from "fs";
 
 import { fileURLToPath } from "url";
 export const REPO = fileURLToPath(new URL("../", import.meta.url));
-const MIGRATIONS = ["001_social_os_schema.sql", "002_social_videos_overview_body.sql", "003_social_videos_write_path.sql", "004_social_videos_final_cut_url.sql", "005_social_videos_on_screen_caption.sql"];
+const MIGRATIONS = ["001_social_os_schema.sql", "002_social_videos_overview_body.sql", "003_social_videos_write_path.sql", "004_social_videos_final_cut_url.sql", "005_social_videos_on_screen_caption.sql", "006_client_journey.sql"];
 
 export async function freshDb() {
   const passthrough = v => v;
@@ -16,7 +16,7 @@ export async function freshDb() {
   await db.exec(`
     create role anon nologin; create role authenticated nologin;
     create schema auth;
-    create table auth.users (id uuid primary key);
+    create table auth.users (id uuid primary key, email text, email_confirmed_at timestamptz);
     create function auth.uid() returns uuid language sql stable as
       $$ select coalesce(nullif(current_setting('request.jwt.claim.sub', true), ''),
                         (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub'))::uuid $$;
@@ -99,17 +99,23 @@ export function makeHarness(db) {
     return {
       from: builder,
       async rpc(fn, args) {
+        args = args || {};
         inflight++;
         try {
           const names = Object.keys(args);
           const r = await as(uid, `select * from ${q(fn)}(${names.map((n, i) => `${n} => $${i + 1}`).join(",")})`, names.map(n => args[n]));
           log.push({ rpc: fn, error: r.error && r.error.message });
-          return r.error ? { data: null, error: r.error } : { data: r.data[0], error: null };
+          if (r.error) return { data: null, error: r.error };
+          // Like PostgREST: a function returning a plain value (not a row)
+          // comes back as that value.
+          const row = r.data[0], keys = row ? Object.keys(row) : [];
+          return { data: keys.length === 1 && keys[0] === fn ? row[fn] : row, error: null };
         } finally { inflight--; }
       },
       auth: {
         getSession: async () => ({ data: { session: { user: { id: uid, email: uid + "@test" } } } }),
-        onAuthStateChange: () => {}, signOut: async () => {}, signInWithPassword: async () => ({}), resetPasswordForEmail: async () => ({}),
+        onAuthStateChange: () => {}, signOut: async () => {},
+        signInWithOtp: async o => { log.push({ otp: o }); return { error: null }; }, signInWithPassword: async () => ({}), resetPasswordForEmail: async () => ({}),
       },
     };
   }

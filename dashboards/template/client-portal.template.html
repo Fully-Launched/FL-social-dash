@@ -19,6 +19,7 @@
   <div class="sync-badge" id="operatorBadge" style="display:none">🔧 Viewing as operator</div>
   <div class="nav-item active" data-view="videos"><span class="ic">🎬</span> My Videos</div>
   <div class="nav-item" data-view="calendar"><span class="ic">📅</span> Content Calendar</div>
+  <a class="nav-item" id="footageNav" href="#" target="_blank" rel="noopener" style="text-decoration:none;display:none"><span class="ic">📁</span> My footage folder ↗</a>
 </nav>
 
 <main class="main">
@@ -28,20 +29,27 @@
 
   <section class="view active" id="view-videos">
     <div class="page-head"><h1>My Videos</h1><p id="videosSubhead"></p></div>
+    <div class="card" id="footageCard" style="display:none">
+      <div class="row" style="border:none;padding:0">
+        <div class="left"><b>📁 Your footage folder</b>
+          <div class="meta">Every clip for your videos lives here — what you upload and what we film.</div></div>
+        <a class="btn primary" id="footageCardLink" href="#" target="_blank" rel="noopener">Open folder</a>
+      </div>
+    </div>
     <div class="chip-row" id="videoTabs"></div>
 
-    <div data-panel="ideas">
-      <p class="meta" style="margin:8px 0 12px">Approve the ideas you like, or add suggestions and we'll rework them.</p>
-      <div id="listIdeas"></div>
-    </div>
-
-    <div data-panel="film" style="display:none">
-      <p class="meta" style="margin:8px 0 12px">Film each video using its instructions, upload the footage with <b>📁 Raw footage here</b>, then tap <b>Uploaded footage</b>.</p>
+    <div data-panel="film">
+      <p class="meta" style="margin:8px 0 12px">Film each video using its script or outline and upload the footage to your folder. Then tap <b>Video has been filmed</b>. Want something different? Tap <b>Suggest changes</b>.</p>
       <div id="listToFilm"></div>
     </div>
 
+    <div data-panel="ideas" style="display:none">
+      <p class="meta" style="margin:8px 0 12px">We'll film these for you. Approve the ideas you like, or suggest changes and we'll rework them.</p>
+      <div id="listIdeas"></div>
+    </div>
+
     <div data-panel="final" style="display:none">
-      <p class="meta" style="margin:8px 0 12px">Watch each finished video, then approve it for posting.</p>
+      <p class="meta" style="margin:8px 0 12px">Watch each finished video and check its captions — edit them right here if you'd like. Then approve it for posting, or ask for changes to the video.</p>
       <div id="listFinal"></div>
     </div>
   </section>
@@ -60,26 +68,37 @@
 <script>
 // Everything is read live from Supabase once the login is resolved. A
 // client's buttons write through social_client_video_action — the
-// database checks each move (see
-// supabase/migrations/003_social_videos_write_path.sql).
+// database checks each move (see supabase/migrations/006_client_journey.sql).
+//
+// Two kinds of video (social_videos.filmed_by):
+//   client — the client films it: "Suggest changes", or upload the footage
+//            and "Video has been filmed" (straight to editing; the edit is
+//            due in 7 days, the post goes out 7 after that).
+//   us     — Tait films it or already has the footage: the client approves
+//            the idea or suggests changes, and never uploads anything.
+// Then every finished video comes back here to approve for posting (with
+// the captions, which the client can edit) or to send back with changes.
 
 let CLIENT = null;          // the social_clients row
 let DRIVE_FOLDERS = {};     // from social_drive_folder_links
 let VIDEOS = [];            // from social_videos (videoFromRow shape)
 let HIDDEN_CONCEPTS = 0;    // operator view only: ideas the client can't see (sent back with suggestions)
-let IS_SELF_SERVE = true;   // self-serve = the client films; concierge = Tait films
 let IS_OPERATOR = false;
 const calState = { offset: 0 };
 let activeTab = null;
 
-// The three things a client does. Clients Tait films for only get the last.
+const filmedBy = v => filmedByOf(v, CLIENT.client_system);
+const clientFilms = () => CLIENT.client_system !== "concierge";   // the client's default
+
 const TABS = [
-  { key: "ideas", label: "Ideas to approve",           statuses: ["concept_pending"], selfServeOnly: true },
-  { key: "film",  label: "To film",                    statuses: ["to_film", "filmed"], selfServeOnly: true },
-  { key: "final", label: "Finished videos to approve", statuses: ["client_review"] },
+  { key: "film",  label: "To film",                    match: v => filmedBy(v) === "client" && ["concept_pending", "to_film", "filmed"].includes(v.status), shownFor: () => clientFilms() },
+  { key: "ideas", label: "Ideas to approve",           match: v => filmedBy(v) === "us" && v.status === "concept_pending", shownFor: () => !clientFilms() },
+  { key: "final", label: "Finished videos to approve", match: v => v.status === "client_review", shownFor: () => true },
 ];
-function tabsForClient() { return TABS.filter(t => IS_SELF_SERVE || !t.selfServeOnly); }
-function videosInTab(key) { return VIDEOS.filter(v => TABS.find(x => x.key === key).statuses.includes(v.status)); }
+// A tab shows when it fits how this client usually works, or when it has
+// something in it (a one-off video filmed the other way).
+function tabsForClient() { return TABS.filter(t => t.shownFor() || videosInTab(t.key).length); }
+function videosInTab(key) { return VIDEOS.filter(TABS.find(t => t.key === key).match); }
 
 // One shared file serves every client — which one comes from the URL
 // (/clients/<slug>, or the older /clients/<slug>/portal.html; see
@@ -111,12 +130,19 @@ function renderAll() { renderOperatorBanner(); renderVideos(); renderCalendar();
 function actionsFor(v) { return videoActionsFor(v, "client", CLIENT.client_system); }
 
 // The operator's version of a client action: same move as the transition
-// table in 003, written directly (operators have full access). The status
+// table in 006, written directly (operators have full access). The status
 // filter stops a stale page from moving a video that has since moved on.
-async function runAsOperator(actionKey, videoId, note) {
+async function runAsOperator(actionKey, videoId, note, extra) {
   const a = VIDEO_ACTIONS[actionKey];
-  const row = { status: a.to };
-  if (note) row.note = note;
+  const video = VIDEOS.find(v => v.id === videoId) || {};
+  const patch = { status: a.to };
+  if (note) patch.note = note;
+  if (actionKey === "submit_footage") Object.assign(patch, footageDates(video));
+  if (actionKey === "approve_final" && extra) {
+    if (extra.caption) patch.caption = extra.caption;
+    if (extra.onScreenCaption) patch.onScreenCaption = extra.onScreenCaption;
+  }
+  const row = videoFieldsToRow(patch);
   // Suggestions send the idea back to Tait, like the client's
   // request_concept_changes does.
   if (actionKey === "request_concept_changes") { row.concept_approved_by = null; row.concept_approved_at = null; }
@@ -126,79 +152,133 @@ async function runAsOperator(actionKey, videoId, note) {
   return { video: videoFromRow(data[0]) };
 }
 
-async function doAction(actionKey, videoId, btnEl) {
+// What the client is told after each step.
+function thanksFor(actionKey, video) {
+  const posts = video.postDate ? ` It's set to post on <b>${escapeHtml(video.postDate)}</b>.` : "";
+  return {
+    submit_footage: ["Thanks for submitting your video! 🎬",
+      `Our editor has it now. In about <b>7 days</b> you'll get the finished video right here to approve for posting.${posts}`],
+    approve_concept: ["Idea approved! 🎉",
+      "Stay tuned — we'll film and edit it, then you'll get the finished video right here to check out and approve before it posts."],
+    request_concept_changes: ["Thanks for the suggestions!",
+      "We'll rework this idea and send it back to you."],
+    approve_final: ["Approved for posting! ✅", `Nothing else to do.${posts}`],
+    request_revisions: ["Got it — changes are on the way.",
+      "We'll make those changes and send the video back here for you to approve."],
+  }[actionKey];
+}
+function showMessage(title, bodyHtml) {
+  const box = openModal(`<h2>${escapeHtml(title)}</h2><p style="margin:8px 0 18px;line-height:1.55">${bodyHtml}</p>
+    <div class="modal-actions" style="border:none;padding:0"><button class="primary" id="msgOk">Got it</button></div>`);
+  box.querySelector("#msgOk").onclick = closeVideoModal;
+}
+function confirmStep(title, bodyHtml, yesLabel, onYes) {
+  const box = openModal(`<h2>${escapeHtml(title)}</h2><p style="margin:8px 0 18px;line-height:1.55">${bodyHtml}</p>
+    <div class="modal-actions" style="border:none;padding:0"><button class="primary" id="cfYes">${escapeHtml(yesLabel)}</button><button id="cfNo">Not yet</button></div>`);
+  box.querySelector("#cfNo").onclick = closeVideoModal;
+  box.querySelector("#cfYes").onclick = e => { e.target.disabled = true; onYes(); };
+}
+
+async function doAction(actionKey, videoId, btnEl, note, extra) {
   const a = VIDEO_ACTIONS[actionKey];
-  const video = VIDEOS.find(v => v.id === videoId);
-  if (actionKey === "mark_filmed" && !confirm(`Have you uploaded all the footage for "${video ? video.title : "this video"}" to the raw footage folder?`)) return;
-  let note = null;
-  if (a.needsNote) {
-    note = prompt(a.notePrompt || "Add a note:");
-    if (note === null) return;
-    if (!note.trim()) { alert("Please add a short note so we know what to change."); return; }
-  }
   if (btnEl) { btnEl.disabled = true; btnEl.textContent = "Saving…"; }
-  const run = IS_OPERATOR ? runAsOperator : runVideoAction;
-  let r = await run(actionKey, videoId, note);
-  // Uploading footage is one step for the client: filmed, then straight on
-  // to Tait.
-  if (!r.error && actionKey === "mark_filmed") r = await run("mark_ready_to_edit", videoId);
+  const r = await (IS_OPERATOR ? runAsOperator : runVideoAction)(actionKey, videoId, note, extra);
   if (r.error) {
-    alert("That didn't save: " + r.error);
+    closeVideoModal();
+    showMessage("That didn't save", escapeHtml(r.error));
     if (btnEl) { btnEl.disabled = false; btnEl.textContent = a.label; }
     return;
   }
   closeVideoModal();
   await loadVideos();
-}
-
-function actionButton(actionKey, videoId) {
-  const a = VIDEO_ACTIONS[actionKey];
-  const b = document.createElement("button");
-  b.textContent = a.label;
-  if (a.destructive) b.className = "reject";
-  else if (!a.needsNote) b.className = "primary";
-  b.onclick = () => doAction(actionKey, videoId, b);
-  return b;
+  const [title, body] = thanksFor(actionKey, r.video);
+  showMessage(title, body);
 }
 
 // ---------- cards ----------
 function fieldRow(label, value) {
   return value ? `<div style="margin:10px 0 4px"><b style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin-bottom:3px">${label}</b><div style="white-space:pre-wrap;font-size:0.92rem;line-height:1.5">${escapeHtml(value)}</div></div>` : "";
 }
+function lbl(text) { return `<label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin:12px 0 4px">${escapeHtml(text)}</label>`; }
 
-// What the client sees on a video. Filming stages: hook, script, outline,
-// film-by date and how to film it. Final approval: the video and both
-// captions. Nothing else.
+// What the client sees on a video, by stage. Before filming: film-by date
+// (if they film it), hook, script, outline, how to film it. At final
+// approval: the video and both captions, editable.
 function clientCardBody(video) {
+  const fb = filmedBy(video);
   const isIdea = ["concept_pending", "to_film", "filmed"].includes(video.status);
-  const showFootage = DRIVE_FOLDERS.footageUploads && IS_SELF_SERVE && ["to_film", "filmed"].includes(video.status);
-  const watch = video.status === "client_review" ? finishedVideoLink(video, DRIVE_FOLDERS) : null;
+  const clientFilmsIt = isIdea && fb === "client";
+  const final = video.status === "client_review";
+  const watch = final ? finishedVideoLink(video, DRIVE_FOLDERS) : null;
   return `
-    ${isIdea && video.dueToFilm && IS_SELF_SERVE ? `<div class="meta" style="margin-bottom:6px">🎥 Film by <b>${escapeHtml(video.dueToFilm)}</b></div>` : ""}
+    ${clientFilmsIt && video.dueToFilm ? `<div class="meta" style="margin-bottom:6px">🎥 Film by <b>${escapeHtml(video.dueToFilm)}</b></div>` : ""}
     ${isIdea ? fieldRow("Hook", video.hook) : ""}
     ${isIdea ? fieldRow("Script", video.body) : ""}
     ${isIdea ? fieldRow("Outline", video.outline) : ""}
-    ${isIdea && IS_SELF_SERVE ? fieldRow("How to film it", video.filmingDirection) : ""}
-    ${video.status === "client_review" ? fieldRow("On-screen caption", video.onScreenCaption) : ""}
-    ${video.status === "client_review" ? fieldRow("Caption", video.caption) : ""}
-    ${showFootage ? `<div class="meta" style="margin-top:10px">Name your files starting with <b>${escapeHtml(video.title || "the video title")}</b>.</div>` : ""}
+    ${clientFilmsIt ? fieldRow("How to film it", video.filmingDirection) : ""}
+    ${clientFilmsIt && DRIVE_FOLDERS.footageUploads ? `<div class="meta" style="margin-top:10px">Upload your clips to your footage folder, with file names starting with <b>${escapeHtml(video.title || "the video title")}</b>.</div>` : ""}
+    ${!isIdea && !final && video.postDate ? `<div class="meta">${escapeHtml(STATUS_LABEL[video.status] || video.status)} · posts ${escapeHtml(video.postDate)}</div>` : ""}
+    ${final ? `
+      ${lbl("On-screen caption")}<textarea data-cap="onScreenCaption" rows="2" style="font:inherit;font-size:0.92rem">${escapeHtml(video.onScreenCaption || "")}</textarea>
+      ${lbl("Caption")}<textarea data-cap="caption" rows="4" style="font:inherit;font-size:0.92rem">${escapeHtml(video.caption || "")}</textarea>` : ""}
     <div class="actions" style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
       ${watch ? `<a class="btn primary" href="${escapeHtml(watch.url)}" target="_blank" rel="noopener">${video.finalCutUrl ? "▶ Watch the video" : "▶ Watch it in the finished video folder"}</a>` : ""}
-      ${showFootage ? `<a class="btn" href="${escapeHtml(DRIVE_FOLDERS.footageUploads)}" target="_blank" rel="noopener">📁 Raw footage here</a>` : ""}
-      ${IS_OPERATOR ? `<button onclick="openPortalEditForm('${video.id}')">✏️ Edit</button>` : ""}
+      ${clientFilmsIt && DRIVE_FOLDERS.footageUploads ? `<a class="btn" href="${escapeHtml(DRIVE_FOLDERS.footageUploads)}" target="_blank" rel="noopener">📁 Upload footage</a>` : ""}
+    </div>
+    <div class="note-box" style="display:none;margin-top:12px">
+      ${lbl("")}<textarea rows="3" style="font:inherit;font-size:0.92rem"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px"><button class="primary" data-send></button><button data-cancel>Cancel</button></div>
     </div>`;
 }
-function addActionButtons(root, video) {
-  const actions = root.querySelector(".actions");
-  actionsFor(video).forEach(k => actions.appendChild(actionButton(k, video.id)));
+
+// The client's buttons for a video, wired into a rendered card or popup.
+// Actions that need a note open a small section right in the card instead
+// of a browser prompt.
+function wireActions(root, video) {
+  const actions = root.querySelector(".actions"), noteBox = root.querySelector(".note-box");
+  actionsFor(video).forEach(key => {
+    const a = VIDEO_ACTIONS[key];
+    const b = document.createElement("button");
+    b.textContent = a.label;
+    b.className = a.destructive ? "reject" : a.needsNote ? "" : "primary";
+    b.onclick = () => {
+      if (a.needsNote) return openNoteBox(root, noteBox, video, key);
+      if (key === "submit_footage") return confirmStep("Is your footage uploaded?",
+        `Make sure every clip for <b>${escapeHtml(video.title || "this video")}</b> is in your footage folder before you send it to our editor.`,
+        "Yes — send it to the editor", () => doAction(key, video.id, b));
+      if (key === "approve_final") return doAction(key, video.id, b, null, captionEdits(root, video));
+      doAction(key, video.id, b);
+    };
+    actions.appendChild(b);
+  });
+  if (IS_OPERATOR) actions.insertAdjacentHTML("beforeend", `<button onclick="openPortalEditForm('${video.id}')">✏️ Edit</button>`);
+}
+function openNoteBox(root, noteBox, video, key) {
+  const a = VIDEO_ACTIONS[key];
+  noteBox.querySelector("label").textContent = a.notePrompt;
+  const text = noteBox.querySelector("textarea"), send = noteBox.querySelector("[data-send]");
+  send.textContent = key === "request_revisions" ? "Send changes" : "Send suggestions";
+  noteBox.style.display = "";
+  text.focus();
+  noteBox.querySelector("[data-cancel]").onclick = () => { noteBox.style.display = "none"; };
+  send.onclick = () => {
+    if (!text.value.trim()) { text.focus(); text.placeholder = "Write a few words first."; return; }
+    doAction(key, video.id, send, text.value.trim());
+  };
+}
+// Caption edits only count if the client actually changed them.
+function captionEdits(root, video) {
+  const val = k => (root.querySelector(`[data-cap="${k}"]`) || {}).value;
+  const cap = (val("caption") || "").trim(), osc = (val("onScreenCaption") || "").trim();
+  return { caption: cap && cap !== (video.caption || "") ? cap : null, onScreenCaption: osc && osc !== (video.onScreenCaption || "") ? osc : null };
 }
 
 function videoCard(video) {
   const card = document.createElement("div");
   card.className = "card";
-  card.innerHTML = `<b class="video-card" style="display:inline-block;margin-bottom:8px" data-open>${escapeHtml(video.title || "(untitled)")}</b>` + clientCardBody(video);
+  card.innerHTML = `<b class="video-card" style="display:inline-block;margin-bottom:8px;font-family:var(--font-serif);font-weight:400;font-size:1.05rem" data-open>${escapeHtml(video.title || "(untitled)")}</b>` + clientCardBody(video);
   card.querySelector("[data-open]").onclick = () => openClientVideoModal(video.id);
-  addActionButtons(card, video);
+  wireActions(card, video);
   return card;
 }
 
@@ -206,10 +286,8 @@ function videoCard(video) {
 function openClientVideoModal(videoId) {
   const video = VIDEOS.find(v => v.id === videoId);
   if (!video) return;
-  const box = openModal(`<h2>${escapeHtml(video.title || "(untitled)")}</h2>
-    ${["concept_pending", "to_film", "filmed", "client_review"].includes(video.status) ? "" : `<div class="meta" style="margin-bottom:8px">${escapeHtml(STATUS_LABEL[video.status] || video.status)}${video.postDate ? " · posts " + escapeHtml(video.postDate) : ""}</div>`}
-    ${clientCardBody(video)}`);
-  addActionButtons(box, video);
+  const box = openModal(`<h2>${escapeHtml(video.title || "(untitled)")}</h2>${clientCardBody(video)}`);
+  wireActions(box, video);
 }
 
 // ---------- operator: edit a video from the portal ----------
@@ -217,22 +295,21 @@ function openClientVideoModal(videoId) {
 // status) stays in the operator dashboard.
 const PORTAL_EDIT_FIELDS = [
   ["title", "Title"], ["hook", "Hook", 2], ["body", "Script", 4], ["outline", "Outline (bullet points, in order)", 4],
-  ["filmingDirection", "How to film it", 3], ["caption", "Caption", 3], ["note", "Note", 2],
+  ["filmingDirection", "How to film it", 3], ["onScreenCaption", "On-screen caption", 2], ["caption", "Caption", 3], ["note", "Note", 2],
 ];
 function openPortalEditForm(videoId) {
   const v = VIDEOS.find(x => x.id === videoId);
   if (!v) return;
-  const lbl = t => `<label style="display:block;font-size:0.72rem;text-transform:uppercase;color:var(--sub);margin:0 0 3px">${escapeHtml(t)}</label>`;
   const field = ([key, label, rows]) => lbl(label) + (rows
-    ? `<textarea data-f="${key}" rows="${rows}" style="width:100%;margin-bottom:10px">${escapeHtml(v[key] || "")}</textarea>`
-    : `<input type="text" data-f="${key}" value="${escapeHtml(v[key] || "")}" style="width:100%;margin-bottom:10px">`);
-  const date = (key, label) => `<div>${lbl(label)}<input type="date" data-f="${key}" value="${escapeHtml(v[key] || "")}" style="width:100%;margin-bottom:10px"></div>`;
+    ? `<textarea data-f="${key}" rows="${rows}" style="width:100%">${escapeHtml(v[key] || "")}</textarea>`
+    : `<input type="text" data-f="${key}" value="${escapeHtml(v[key] || "")}" style="width:100%">`);
+  const date = (key, label) => `<div>${lbl(label)}<input type="date" data-f="${key}" value="${escapeHtml(v[key] || "")}" style="width:100%"></div>`;
   const box = openModal(`<h2>Edit video</h2>
     ${PORTAL_EDIT_FIELDS.map(field).join("")}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
       ${date("dueToFilm", "Film by")}${date("dueToEdit", "Edit by")}${date("postDate", "Post date")}
     </div>
-    <div class="modal-actions"><button class="primary" id="portalEditSave">Save</button><button onclick="closeVideoModal()">Cancel</button></div>`);
+    <div class="modal-actions" style="margin-top:14px"><button class="primary" id="portalEditSave">Save</button><button onclick="closeVideoModal()">Cancel</button></div>`);
   box.querySelector("#portalEditSave").onclick = async e => {
     const patch = {};
     box.querySelectorAll("[data-f]").forEach(el => { patch[el.dataset.f] = el.value.trim(); });
@@ -259,9 +336,9 @@ function renderOperatorBanner() {
 }
 
 function renderVideos() {
-  document.getElementById("videosSubhead").textContent = IS_SELF_SERVE
-    ? "Approve ideas, film them, and approve the finished videos for posting."
-    : "We film and edit. You just approve the finished videos for posting.";
+  document.getElementById("videosSubhead").textContent = clientFilms()
+    ? "Film your videos, then approve the finished edits for posting."
+    : "Approve ideas, then approve the finished edits for posting. We handle the filming.";
   const byPostDate = (a, b) => (a.postDate || "9999").localeCompare(b.postDate || "9999");
   const byFilmDate = (a, b) => (a.dueToFilm || "9999").localeCompare(b.dueToFilm || "9999");
   const fill = (elId, vids, empty) => {
@@ -270,9 +347,9 @@ function renderVideos() {
     if (!vids.length) { el.innerHTML = `<div class="empty">${empty}</div>`; return; }
     vids.forEach(v => el.appendChild(videoCard(v)));
   };
-  fill("listIdeas", videosInTab("ideas").sort(byPostDate), "No new ideas right now.");
-  fill("listToFilm", videosInTab("film").sort(byFilmDate), "Nothing to film right now.");
-  fill("listFinal", videosInTab("final").sort(byPostDate), "No finished videos waiting.");
+  fill("listToFilm", videosInTab("film").sort(byFilmDate), "Nothing to film right now — nice work. Stay tuned for your finished edits.");
+  fill("listIdeas", videosInTab("ideas").sort(byPostDate), "No new ideas right now. Stay tuned for your finished edits.");
+  fill("listFinal", videosInTab("final").sort(byPostDate), "No finished videos waiting. They'll show up here as soon as they're edited.");
   renderVideoTabs();
 }
 
@@ -291,10 +368,10 @@ function renderVideoTabs() {
 function renderCalendar() {
   const byDay = {};
   VIDEOS.forEach(v => {
-    if (v.dueToFilm && IS_SELF_SERVE && ["concept_pending", "to_film"].includes(v.status)) (byDay[v.dueToFilm] = byDay[v.dueToFilm] || []).push({ v, kind: "🎥 " });
+    if (v.dueToFilm && filmedBy(v) === "client" && ["concept_pending", "to_film", "filmed"].includes(v.status)) (byDay[v.dueToFilm] = byDay[v.dueToFilm] || []).push({ v, kind: "🎥 " });
     if (v.postDate) (byDay[v.postDate] = byDay[v.postDate] || []).push({ v, kind: "" });
   });
-  document.getElementById("calFilmNote").style.display = IS_SELF_SERVE ? "" : "none";
+  document.getElementById("calFilmNote").style.display = VIDEOS.some(v => filmedBy(v) === "client") ? "" : "none";
   renderMonthCalendar(document.getElementById("calGrid"), byDay, ({ v, kind }) =>
     `<div class="cal-chip video-card" style="background:color-mix(in srgb, var(--status-${v.status}) 20%, transparent); color:var(--status-${v.status})" onclick="openClientVideoModal('${v.id}')">${kind}${escapeHtml(v.title || "(untitled)")}</div>`,
     calState, renderCalendar);
@@ -304,11 +381,21 @@ function renderCalendar() {
 // client's own social_client_users login. The social_clients lookup by
 // slug is both the access check and the data fetch — RLS decides whether
 // the row comes back, so a client typing another client's slug gets
-// nothing. The social_client_users lookup only picks the error message.
+// nothing. A first-time login whose email was invited (the client's
+// contact email) is linked to its client by social_claim_client_invite,
+// then sent to that client's portal if the URL named a different one.
 async function resolveClientPortalAccess(sb, user) {
   const slug = getClientSlugFromUrl();
-  if (!slug) return { ok: false, reason: "No client specified in this URL." };
   const { data: op } = await sb.from("social_operators").select("id").eq("id", user.id).maybeSingle();
+  if (!op) {
+    const { data: claimed } = await sb.rpc("social_claim_client_invite");
+    if (claimed) {
+      const { data: own } = await sb.from("social_clients").select("*").eq("id", claimed).maybeSingle();
+      if (own && own.slug !== slug) { location.replace("/clients/" + encodeURIComponent(own.slug)); return { ok: false, reason: "Taking you to your portal…" }; }
+      if (own) return { ok: true, role: "client", client: own };
+    }
+  }
+  if (!slug) return { ok: false, reason: "No client specified in this URL." };
   const { data: client } = await sb.from("social_clients").select("*").eq("slug", slug).maybeSingle();
   if (client) return { ok: true, role: op ? "operator" : "client", client };
   if (op) return { ok: false, reason: "No client found for this URL." };
@@ -320,7 +407,6 @@ async function resolveClientPortalAccess(sb, user) {
 async function startApp(user, access) {
   CLIENT = access.client;
   IS_OPERATOR = access.role === "operator";
-  IS_SELF_SERVE = CLIENT.client_system !== "concierge";
 
   document.title = CLIENT.name;
   document.getElementById("brandName").textContent = CLIENT.name;
@@ -328,6 +414,11 @@ async function startApp(user, access) {
 
   const { data: folderRow } = await sbClient.from("social_drive_folder_links").select("*").eq("client_id", CLIENT.id).maybeSingle();
   DRIVE_FOLDERS = folderRow ? { footageUploads: folderRow.footage_uploads, finalEdits: folderRow.final_edits } : {};
+  if (DRIVE_FOLDERS.footageUploads) {
+    ["footageNav", "footageCardLink"].forEach(id => { document.getElementById(id).href = DRIVE_FOLDERS.footageUploads; });
+    document.getElementById("footageNav").style.display = "";
+    document.getElementById("footageCard").style.display = "";
+  }
 
   initRouter("videos");
   await loadVideos();

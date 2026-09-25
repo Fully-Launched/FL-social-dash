@@ -93,6 +93,7 @@ a { color:inherit; }
 .row .left b { display:block; font-size:0.93rem; }
 .row .left .meta { font-size:0.8rem; color:var(--sub); margin-top:2px; }
 .empty { color:var(--sub2); font-size:0.85rem; padding:14px 0; }
+p.meta, div.meta { color:var(--sub); font-size:0.88rem; line-height:1.5; }
 
 /* Video card (compact — used in calendars/queues) */
 .video-card { cursor:pointer; transition:border-color .1s; }

@@ -332,7 +332,10 @@ fully-social-os/
                                active-editor RLS), 004 (final_cut_url — optional
                                link to one exact finished file), 005
                                (on_screen_caption — added by whoever posts, in the
-                               app, not by the editor; outline)
+                               app, not by the editor; outline), 006 (client
+                               journey v2: filmed_by, submit_footage + the 7+7
+                               dates, caption edits at final approval, client
+                               contact details, social_claim_client_invite)
     config.example.js          template for supabase/config.js (gitignored —
                                the real Supabase URL/anon key, local dev only)
 ```
@@ -349,18 +352,22 @@ project as fully-launched-crm; every table here is prefixed `social_`).
 Nothing about a client or video is stored in git, in the built pages, or in
 a browser's localStorage. There is no status report or copy-paste relay.
 
-Who can write what (`supabase/migrations/003_social_videos_write_path.sql`):
+Who can write what (`supabase/migrations/003_social_videos_write_path.sql`,
+client actions as replaced by `006_client_journey.sql`):
 
 - **Operators** — full direct read/write on every `social_` table. New
   ideas are inserted with gate 1 already stamped (`concept_approved_by/at`),
   so the client sees them at once. Re-sending an idea the client sent back
   goes through `social_operator_approve_concept`.
 - **Clients** — no direct writes. Only `social_client_video_action(video,
-  action, note)`, which checks the move against the transition table in 003:
-  approve_concept, request_concept_changes (clears gate 1 — the idea goes
-  back to the owner), mark_filmed, mark_ready_to_edit (self-serve only),
-  approve_final, request_revisions. The database still allows `reject`, but
-  no page shows it (v1 is approve or add suggestions).
+  action, note, caption, on_screen_caption)`, which checks the move against
+  the transition table in 006. What's allowed depends on the video's
+  `filmed_by`: `client` → submit_footage ("Video has been filmed": straight
+  to ready_to_edit, edit due in 7 days, post in 14 or on the planned date if
+  later); `us` → approve_concept. Either → request_concept_changes (clears
+  gate 1 — the idea goes back to the owner), approve_final (with optional
+  caption edits), request_revisions. mark_filmed / mark_ready_to_edit /
+  reject still exist for older pages; no page shows them.
 - **Editors** — no direct writes. Only `social_editor_mark_delivered(video,
   final_cut_url)`. The editor dashboard doesn't send a link: editors upload
   into the client's Final edits folder, naming the file after the video, and
@@ -394,6 +401,19 @@ same project allow any authenticated user (see the note at the end of
 including financials, until the CRM's policies check team membership. That
 fix belongs in the fully-launched-crm repo and is not done yet.
 
+**Client invites** (Clients → "✉️ Invite to portal") send a sign-in link
+(`signInWithOtp`, creating the login) to the client's contact email,
+redirecting to their portal. The first time a login with a *confirmed*
+email matching a client's `contact_email` opens a portal,
+`social_claim_client_invite()` links it to that client
+(`social_client_users`); operators and editors are never linked. Clients
+sign in again with "Email me a sign-in link" on the login screen.
+Invites are **switched off** (`INVITES_ENABLED = false` in the operator
+template) until the CRM fix above. Before turning them on, Supabase also
+needs: Authentication → URL Configuration → Redirect URLs including
+`https://fl-social-dash.vercel.app/**`, and custom SMTP (Supabase's built-in
+email only reaches the project's own team, and is heavily rate-limited).
+
 Password reset calls `resetPasswordForEmail` with no `redirectTo`, and no
 page handles setting a new password — reset links land on the project's
 Site URL. Not fixed yet.
@@ -407,12 +427,19 @@ back one piece at a time:
 
 1. Tait plans 30 days of ideas with Claude and pastes them in ("📋 Add
    ideas with Claude"). They fill the content calendar and show in the
-   client's portal immediately.
-2. The client approves each idea or adds suggestions. Suggestions send the
-   idea back to Tait, who edits it and sends it again.
-3. Whoever films: the client uploads to the raw footage folder and taps
-   "Uploaded footage"; for clients Tait films for ("I film" = concierge),
-   ideas skip client approval and start at "To film" on Tait's side.
+   client's portal immediately. Each video is either **client films** or
+   **we film** (`filmed_by`; defaults from the client — self-serve = client
+   films, concierge = we film — and can be changed per video).
+2. Client films: the card offers only **Suggest changes** (a box opens in
+   the card) or, after uploading to their footage folder, **Video has been
+   filmed** (confirm → thank-you: "in about 7 days you'll get the finished
+   video to approve"). It goes straight to Tait for an editor.
+   We film: the client **approves the idea** (thank-you: "stay tuned…") or
+   suggests changes; Tait films it or already has the footage, and it shows
+   in his "Ready for an editor" list. Suggestions always send the idea back
+   to Tait, who edits it and sends it again.
+3. Timing (7 + 7): footage in → edit due in 7 days → posts 7 days after
+   that (or on the planned post date, if later).
 4. Tait picks an editor and sends it. The editor downloads the raw footage,
    edits from the instructions, uploads to the finished video folder named
    after the video, and taps "Finished — send to operator".
@@ -421,8 +448,11 @@ back one piece at a time:
    so the client portal never shows it) or "Approve & add captions"
    (on-screen caption, post caption — required — platforms, post date),
    which clears the revisions and sends it to the client.
-6. The client approves it for posting (or requests changes, which goes back
-   to the editor and shows in the same Revisions needed section).
+6. The client watches it, can edit both captions right on the card, and
+   approves it for posting — or requests changes to the video (a box in the
+   card; it goes back to the editor and shows in the same Revisions needed
+   section). Every client step ends in a short thank-you message, never a
+   browser pop-up.
 7. Ready to Post lists it by post date with the caption and finished video;
    whoever posts marks it posted. Posting stays manual (principle 6).
 
@@ -443,13 +473,16 @@ suggests edit-by 7 days earlier.
 
 ### Client portal — `/clients/<slug>`
 
-One shared file; the slug comes from the URL. Two pages: **My Videos**
-(tabs: Ideas to approve, To film, Finished videos to approve — clients Tait
-films for only get the last) and **Content Calendar** (post dates, plus 🎥
-film dates for clients who film). A video card shows the client only
-what they need: while filming — hook, script, outline (bullet points of
-the script, in order), film-by date, how to film it, and the raw footage
-link; at final approval — the video and both captions. Every client button calls
+One shared file; the slug comes from the URL. **My Videos** (a "Your
+footage folder" card, then tabs: To film — client-filmed ideas; Ideas to
+approve — we-film ideas; Finished videos to approve. A tab shows when it
+fits the client's default or has something in it), **Content Calendar**
+(post dates, plus 🎥 film dates for client-filmed ideas) and **My footage
+folder ↗** (the client's Drive folder — what they upload and what we
+film). A video card shows only what's needed: client-filmed ideas — film-by
+date, hook, script, outline, how to film it, upload link; we-film ideas —
+hook, script, outline; at final approval — the video and both captions
+(editable). Every client button calls
 `social_client_video_action`. An operator opening a portal sees exactly
 what the client sees, can click the client's buttons and ✏️ Edit, and it's
 logged as the operator.
@@ -465,12 +498,12 @@ filter, and can click Finished for them.
 
 ## Adding a client
 
-Operator dashboard → Clients → "+ New client" (name, portal address, who
-films, and the raw footage + finished video Drive folder links — the folders
-are created by hand; this repo never creates Drive folders). The portal is
-live immediately. Giving the client a login
-means creating their Supabase Auth user and a `social_client_users` row —
-blocked on the CRM fix above.
+Operator dashboard → Clients → "+ New client": client name, portal address,
+contact name / phone / email (the email is who gets invited), who usually
+films, and the raw footage + finished video folder and brand guidelines
+links (created by hand — this repo never creates Drive folders). The portal
+is live immediately. "✉️ Invite to portal" sends the contact a sign-in link
+— switched off until the CRM fix (see Auth).
 
 ## Adding an editor
 
@@ -503,7 +536,9 @@ clients or videos never needs a rebuild.
 `clients/<slug>/` source material is never served.
 
 Migrations are applied by hand in the Supabase SQL editor, in order. Each
-is safe to re-run.
+is safe to re-run as part of the sequence — but re-running 003 on its own
+after 006 would bring back 003's older client function alongside 006's, so
+re-run 006 after it.
 
 ---
 

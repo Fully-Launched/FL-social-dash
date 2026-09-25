@@ -51,6 +51,7 @@ function authRenderForm() {
         <div class="auth-error" id="authError"></div>
         <button type="submit" class="primary" id="authSubmit">Sign in</button>
       </form>
+      <a href="#" id="authMagic" class="auth-forgot">No password? Email me a sign-in link</a>
       <a href="#" id="authForgot" class="auth-forgot">Forgot password?</a>
       <div id="authSwitchWrap" class="hidden">
         <a href="#" id="authSwitchBtn" class="auth-forgot">Not the right account? Sign out</a>
@@ -75,6 +76,17 @@ function authRenderForm() {
     authSetMessage("Sending reset email…", true);
     const { error } = await sbClient.auth.resetPasswordForEmail(email);
     authSetMessage(error ? error.message : "Password reset email sent — check your inbox.", !error);
+  });
+  // Invited clients sign in this way — the invite email is the same kind
+  // of link. Never creates a login: only people already invited (or set
+  // up) can get in.
+  document.getElementById("authMagic").addEventListener("click", async e => {
+    e.preventDefault();
+    const email = (document.getElementById("authEmail").value || "").trim();
+    if (!email) { authSetMessage("Enter your email above, then click the link again.", false); return; }
+    authSetMessage("Sending your sign-in link…", true);
+    const { error } = await sbClient.auth.signInWithOtp({ email, options: { shouldCreateUser: false, emailRedirectTo: location.href.split("#")[0] } });
+    authSetMessage(error ? error.message : "Check your inbox — we sent you a link to sign in.", !error);
   });
   document.getElementById("authSwitchBtn").addEventListener("click", e => { e.preventDefault(); authSignOut(); });
 }

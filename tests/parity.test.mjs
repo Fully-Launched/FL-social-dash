@@ -12,23 +12,23 @@ vm.runInContext(shell + "\nthis.VIDEO_ACTIONS=VIDEO_ACTIONS; this.videoActionsFo
 const body = `
 const statuses = [...ctx.STATUS_ORDER, "rejected"];
 let mismatches = 0, cases = 0;
-const who = { client: { "self-serve": [U.cl, C.self], "concierge": [U.clCon, C.con] } };
-for (const system of ["self-serve", "concierge"]) {
-  const [uid, cid] = who.client[system];
+// What the client may do depends on the video's filmed_by, not the client's system.
+for (const filmedBy of ["client", "us"]) {
+  const [uid, cid] = [U.cl, C.self];
   for (const status of statuses) {
     for (const [key, a] of Object.entries(ctx.VIDEO_ACTIONS)) {
       if (a.role === "operator") continue;
-      if (a.role === "editor" && system === "concierge") continue;
+      if (a.role === "editor" && filmedBy === "us") continue;
       const approved = status === "concept_pending";
-      const id = (await db.query("insert into social_videos (client_id,title,status,editor_id,concept_approved_at) values ($1,'t',$2,$3,$4) returning id",
-        [cid, status, U.ed, approved ? new Date().toISOString() : null])).rows[0].id;
+      const id = (await db.query("insert into social_videos (client_id,title,status,editor_id,concept_approved_at,filmed_by) values ($1,'t',$2,$3,$4,$5) returning id",
+        [cid, status, U.ed, approved ? new Date().toISOString() : null, filmedBy])).rows[0].id;
       const r = a.role === "editor"
         ? await as(U.ed, "select status from social_editor_mark_delivered($1)", [id])
         : await as(uid, "select status from social_client_video_action($1,$2,$3)", [id, key, "a note"]);
       const dbOk = !r.error && r.rows[0].status === a.to;
-      const uiOk = ctx.videoActionsFor({ status, conceptApprovedAt: approved ? "x" : null }, a.role, system).includes(key);
+      const uiOk = ctx.videoActionsFor({ status, conceptApprovedAt: approved ? "x" : null, filmedBy }, a.role, "self-serve").includes(key);
       cases++;
-      if (dbOk !== uiOk) { mismatches++; console.log("MISMATCH", system, status, key, { dbOk, uiOk, err: r.error }); }
+      if (dbOk !== uiOk) { mismatches++; console.log("MISMATCH", filmedBy, status, key, { dbOk, uiOk, err: r.error }); }
     }
   }
 }
