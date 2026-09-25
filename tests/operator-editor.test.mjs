@@ -39,14 +39,20 @@ const titles = () => cards().map(c => c.querySelector("[data-open]").textContent
 chk("opens filtered to Morgan", titles().length === 1 && titles()[0] === "Morgan edits this", titles());
 const fin = t => cards().find(c => c.querySelector("[data-open]").textContent === t)?.querySelector("button.primary");
 fin("Morgan edits this").click(); await settle();
+const pop = p.d.getElementById("videoModalBox");
+chk("pop-up asks if it's in Google Drive; warns there's no folder yet", pop.textContent.includes("Is the finished video in Google Drive?") && pop.textContent.includes("no finished video folder yet"));
+p.d.getElementById("efYes").click(); await settle();
+chk("sent confirmation shown", p.d.getElementById("videoModalBox").textContent.includes("Sent to the operator"));
+p.d.getElementById("efDone").click(); await settle();
 let r = (await db.query("select status, final_cut_url from social_videos where title='Morgan edits this'")).rows[0];
 chk("operator finished Morgan's video", r.status === "in_review" && r.final_cut_url === null, r);
-chk("no link asked for", !p.ui.promptsShown.length && p.ui.confirms.some(m => m.includes("finished video folder")), p.ui.confirms);
+chk("no link asked for, no browser pop-ups", !p.ui.promptsShown.length && !p.ui.confirms.length, p.ui.confirms);
 
 // All editors, then Tait's own.
 Array.from(p.d.querySelectorAll("#editorChips .chip")).find(c => c.textContent === "All editors").click(); await settle();
 chk("Tait's video visible under All editors", titles().includes("Tait edits this"), titles());
 fin("Tait edits this").click(); await settle();
+p.d.getElementById("efYes").click(); await settle();
 r = (await db.query("select status from social_videos where title='Tait edits this'")).rows[0];
 chk("operator finished their own video", r.status === "in_review", r);
 

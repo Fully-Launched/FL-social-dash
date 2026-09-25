@@ -91,11 +91,24 @@ function queue() {
 
 // The finished video goes in the client's finished video folder, named
 // after the video, so there's no link to paste; the operator and client
-// open it from that folder.
-async function finishVideo(videoId, btn) {
+// open it from that folder. Before it's sent, a pop-up makes sure it's
+// really in Google Drive, with a button to open that folder.
+function finishVideo(videoId, btn) {
   const x = VIDEOS.find(y => y.video.id === videoId);
-  const t = x ? x.video.title || "this video" : "this video";
-  if (!confirm(`Have you uploaded the finished video to the finished video folder, named "${t}"?`)) return;
+  if (!x) return;
+  const t = x.video.title || "this video", f = x.client.driveFolders || {};
+  const box = openModal(`
+    <h2>Is the finished video in Google Drive?</h2>
+    <p style="line-height:1.55;margin:8px 0 14px">Before you send <b>${escapeHtml(t)}</b> to the operator, make sure the finished video is uploaded to
+      ${escapeHtml(x.client.name)}'s finished video folder, named <b>${escapeHtml(t)}</b>. The operator and the client watch it from there.</p>
+    ${f.finalEdits
+      ? `<a class="btn" href="${escapeHtml(f.finalEdits)}" target="_blank" rel="noopener" style="margin-bottom:16px">⬆️ Open the finished video folder</a>`
+      : `<p style="color:var(--red);margin:0 0 16px">This client has no finished video folder yet. Ask the operator to add one.</p>`}
+    <div class="modal-actions"><button class="primary" id="efYes">Yes — it's in Google Drive, send it</button><button id="efNo">Not yet</button></div>`);
+  box.querySelector("#efNo").onclick = closeVideoModal;
+  box.querySelector("#efYes").onclick = e => { e.target.disabled = true; e.target.textContent = "Sending…"; sendFinished(videoId, btn, t); };
+}
+async function sendFinished(videoId, btn, t) {
   if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
   let err = null;
   if (ROLE === "editor") {
@@ -105,12 +118,16 @@ async function finishVideo(videoId, btn) {
     err = error ? error.message : (!data || !data.length ? "It's no longer with the editor — reload to see its current status." : null);
   }
   if (err) {
+    closeVideoModal();
     alert("That didn't save: " + err);
     if (btn) { btn.disabled = false; btn.textContent = VIDEO_ACTIONS.mark_delivered.label; }
     return;
   }
-  closeVideoModal();
   await loadData();
+  const box = openModal(`<h2>Sent to the operator ✅</h2>
+    <p style="line-height:1.55;margin:8px 0 18px"><b>${escapeHtml(t)}</b> is off for review. If it needs changes, it'll come back here with them under <b>Revisions needed</b>.</p>
+    <div class="modal-actions" style="border:none;padding:0"><button class="primary" id="efDone">Got it</button></div>`);
+  box.querySelector("#efDone").onclick = closeVideoModal;
 }
 function finishButton(videoId) {
   const b = document.createElement("button");

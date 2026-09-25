@@ -191,9 +191,15 @@ for (const i of idx) {
 chk("all with the editor", (await count("status='with_editor' and editor_id=$1", [U.ed])) === 30);
 
 // ── 4. Editor ──
+// Finished → "Is the finished video in Google Drive?" → yes → sent.
+async function finishOne(ed, t) {
+  await click(btn(edCard(ed, t), "Finished"), "finish " + t);
+  await click($(ed, "#efYes"), "it's in drive " + t);
+  await click($(ed, "#efDone"), "sent " + t);
+}
 async function editorFinish(list) {
   const ed = track(await ED());
-  for (const i of list) await click(btn(edCard(ed, title(i)), "Finished"), "finish " + i);
+  for (const i of list) await finishOne(ed, title(i));
   return ed;
 }
 let ed = track(await ED());
@@ -201,6 +207,12 @@ const e0 = edCard(ed, title(0));
 chk("editor card: edit-by, instructions, brand guidelines, raw footage, finished folder",
   e0.textContent.includes(plus(TODAY, 7)) && e0.textContent.includes("Cut it like this: 1") && !!e0.querySelector('a[href="https://docs/fl-brand"]')
   && !!e0.querySelector('a[href="https://drive/fl-footage"]') && !!e0.querySelector('a[href="https://drive/fl-final"]'));
+// Backing out: "Not yet" leaves it with the editor.
+await click(btn(e0, "Finished"), "finish (not yet)");
+chk("editor asked to confirm it's in Google Drive, with the folder link", $(ed, "#videoModalBox").textContent.includes("Is the finished video in Google Drive?")
+  && !!$(ed, '#videoModalBox a[href="https://drive/fl-final"]') && !ed.ui.confirms.length);
+await click($(ed, "#efNo"), "not yet");
+chk("not yet: still with the editor", (await statusOf(title(0))).status === "with_editor");
 await editorFinish(idx);
 chk("all back to Tait", (await count("status='in_review'")) === 30);
 
@@ -291,7 +303,7 @@ for (const t of ["Prem 1", "Prem 2"]) {
   r.querySelector("select").value = U.ed; await click(btn(r, "Send to editor"), "send " + t);
 }
 ed = track(await ED());
-for (const t of ["Prem 1", "Prem 2"]) await click(btn(edCard(ed, t), "Finished"), "finish " + t);
+for (const t of ["Prem 1", "Prem 2"]) await finishOne(ed, t);
 op = track(await OP());
 for (const t of ["Prem 1", "Prem 2"]) { await click(btn(opRow(op, "#editsList", t), "Approve & add captions"), "approve " + t); $(op, '#videoModalBox [data-f="caption"]').value = t + " caption"; await click($(op, "#aeSave"), "cap " + t); }
 prem = track(await PREMP());
