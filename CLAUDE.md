@@ -335,7 +335,9 @@ fully-social-os/
                                app, not by the editor; outline), 006 (client
                                journey v2: filmed_by, submit_footage + the 7+7
                                dates, caption edits at final approval, client
-                               contact details, social_claim_client_invite)
+                               contact details, social_claim_client_invite), 007
+                               (social_client_documents — each client's
+                               important Google Drive docs)
     config.example.js          template for supabase/config.js (gitignored —
                                the real Supabase URL/anon key, local dev only)
 ```
@@ -481,7 +483,9 @@ One shared file; the slug comes from the URL. **My Videos** (a "Your
 footage folder" card, then tabs: To film — client-filmed ideas; Ideas to
 approve — we-film ideas; Finished videos to approve. A tab shows when it
 fits the client's default or has something in it), **Content Calendar**
-(post dates, plus 🎥 film dates for client-filmed ideas) and **My footage
+(post dates, plus 🎥 film dates for client-filmed ideas), **Documents**
+(the client's important Google Drive docs — `social_client_documents`,
+added on the operator's Clients → Edit; clients read only their own) and **My footage
 folder ↗** (the client's Drive folder — what they upload and what we
 film). A video card shows only what's needed: client-filmed ideas — film-by
 date, hook, script, outline, how to film it, upload link; we-film ideas —

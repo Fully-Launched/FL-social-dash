@@ -106,7 +106,7 @@ const clientFilmed = idx.filter(i => !V.switchToUs.includes(i));
 
 // ── 2. Client (films their own) ──
 let cl = track(await CL());
-chk("client nav: My Videos, Calendar, footage folder", $$(cl, ".nav-item").map(n => n.textContent.trim()).join("|") === "🎬 My Videos|📅 Content Calendar|📁 My footage folder ↗");
+chk("client nav: My Videos, Calendar, Documents, footage folder", $$(cl, ".nav-item").map(n => n.textContent.trim()).join("|") === "🎬 My Videos|📅 Content Calendar|📄 Documents|📁 My footage folder ↗");
 chk("footage folder card on My Videos", $(cl, "#footageCard").style.display !== "none" && $(cl, "#footageCardLink").href === "https://drive/fl-footage");
 chk(`To film shows ${clientFilmed.length}`, $(cl, "#videoTabs").textContent.includes(`To film (${clientFilmed.length})`), $(cl, "#videoTabs").textContent);
 if (V.switchToUs.length) chk("switched video shows under Ideas to approve", $(cl, "#videoTabs").textContent.includes(`Ideas to approve (${V.switchToUs.length})`), $(cl, "#videoTabs").textContent);
