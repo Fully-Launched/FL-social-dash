@@ -2,7 +2,7 @@
 
 **The 3-3-3 framework: pillars, formats, perspectives**
 
-**Last updated:** 2026-09-25
+**Last updated:** 2026-09-26
 **Drive:** https://docs.google.com/document/d/1CzaSXHTk_25Qb6GoueDd_wxzHpAV0efVmD6REdf9k_4/edit (mirror of this file)
 **Sources:** Tait's voice memo and notes in chat, and Luke Bothun's answers (2026-09-25). See Customer Data for the full recordings.
 **Tags:** **[Tait]** / **[Luke]** mean said by them. **[To confirm]** means Tait hasn't decided yet.
@@ -39,6 +39,9 @@ Every client gets a **3-3-3**: **3 pillars** (what we always talk about), **3 fo
 
 ### Recurring series (runs across every pillar): Building Fully Launched
 - **At least 4 videos a week** documenting the build of the business. It goes on the content calendar. **[Tait]**
+
+### Recurring series: Authority Hacking
+- **1 video a week.** Highlight a person who is extremely successful in websites, e-commerce, AI or social media. Hook with how successful they are, then explain why. Rotates through the four pillars. **[Tait]**
 
 ---
 

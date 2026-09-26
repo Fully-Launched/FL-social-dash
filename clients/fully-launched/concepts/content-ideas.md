@@ -1,6 +1,6 @@
 # Fully Launched — Content Ideas
 
-**Last updated:** 2026-09-25
+**Last updated:** 2026-09-26
 **Drive:** https://docs.google.com/document/d/1Lax_VKFYEeJxhJhOvdRn_Y6ALFtkF4Jyd0AZYnFi9jE/edit (mirror of this file)
 **Built from:** Customer Data, Your Voice and Content Research (all 2026-09-25).
 
@@ -86,6 +86,47 @@ Documenting the build of the business, on the calendar every week. **[Tait]** Th
 - **The idea:** Why Luke, Tait and the team started it: stuck local businesses, unoptimized Etsy and Faire listings, and wanting to do fast, fun projects as a team.
 - **CTA:** Free store audit or social media audit
 - **Source:** Luke's answers
+
+---
+
+## Authority Hacking: 1 video a week
+
+**What it is [Tait]:** highlight a person who is extremely successful in one of our categories (websites, e-commerce, AI or social media). **Hook with how successful they are, then explain *why* they're so successful.**
+
+**Rotation:** one pillar per week, repeating every 4 weeks: **Websites → Marketplaces (e-commerce) → AI systems → Organic content (social media).**
+
+**How each one is built:**
+- **Hook:** their result, stated plainly. The formula: *"[Person] [did something extremely successful]. Here's why it worked."*
+- **The idea:** 2–3 reasons *why* they're so successful, each tied back to how we work: one of our perspectives (① Make it simple · ② Service media · ③ Start small).
+- **Action step (② Service media):** end with the one thing the viewer can take from them and do this week.
+- **CTA:** the free tool that matches the pillar.
+- **Facts rule:** every claim about the person (numbers, results, dates) must be checked against a real source and linked in Content Research before filming. We never guess.
+
+**Needs from you:** who to feature. Pick them yourself, or ask Claude to research candidates for each pillar, with sources.
+
+**AH1. Websites**
+- **Person:** *(needs from you)*
+- **Hook:** "[Person] [result]. Here's why."
+- **Perspective:** ① Make it simple
+- **CTA:** Free guide: 3 steps to simplify your website
+
+**AH2. Marketplaces (e-commerce)**
+- **Person:** *(needs from you)*
+- **Hook:** "[Person] [result]. Here's why."
+- **Perspective:** ③ Start small
+- **CTA:** Free store audit
+
+**AH3. AI systems**
+- **Person:** *(needs from you)*
+- **Hook:** "[Person] [result]. Here's why."
+- **Perspective:** ③ Start small
+- **CTA:** Questionnaire: simplify your business with an AI system
+
+**AH4. Organic content (social media)**
+- **Person:** *(needs from you)*
+- **Hook:** "[Person] [result]. Here's why."
+- **Perspective:** ② Service media
+- **CTA:** Free social media audit
 
 ---
 
@@ -405,6 +446,7 @@ Documenting the build of the business, on the calendar every week. **[Tait]** Th
 ## Summary
 
 - **Building Fully Launched:** 9 ideas (B1–B9). **At least 4 go on the calendar every week.**
+- **Authority Hacking:** 4 slots (AH1–AH4), one pillar a week in rotation. **1 goes on the calendar every week.** People still to pick.
 - **Organic content:** 12 (O1–O12)
 - **AI systems:** 10 (A1–A10)
 - **Websites:** 4 (W1–W4)
